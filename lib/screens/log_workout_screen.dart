@@ -8,8 +8,6 @@ import '../services/tabata_timer_service.dart';
 import '../services/workout_load_service.dart';
 import 'add_workout_screen.dart';
 import '../services/workout_suggestion_service.dart';
-import 'package:flutter/foundation.dart';
-import '../services/web_audio.dart';
 
 
 
@@ -1222,14 +1220,9 @@ Future<void> _confirmDeleteExercise(
         )
       : ElevatedButton(
   onPressed: () {
-  if (kIsWeb) {
-    WebAudio.unlock();
-  } else {
-    TabataTimerService.unlockAudio();
-  }
-
   _startTabata(blockIndex: index, block: block);
-  },
+},
+
   child: Text(started ? "Continuar Tabata" : "Iniciar Tabata"),
 ),
 
