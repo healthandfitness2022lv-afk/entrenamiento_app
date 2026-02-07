@@ -1,0 +1,42 @@
+name: entrenamiento_app
+description: "App de entrenamiento personal con Firebase"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_svg: ^2.0.10   # 👈 AGREGAR ESTO
+  # 🔥 Firebase
+  firebase_core: ^2.32.0
+  firebase_auth: ^4.20.0
+  cloud_firestore: ^4.17.5
+  audioplayers: ^6.0.0
+  visibility_detector: ^0.4.0+2
+  intl: ^0.20.2
+  fl_chart: ^0.68.0
+
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/svg/body_front.svg
+    - assets/svg/body_back.svg
+    - assets/sounds/work.wav
+    - assets/sounds/rest.wav
+    - assets/sounds/finish.wav
+    - assets/sounds/beep.wav
