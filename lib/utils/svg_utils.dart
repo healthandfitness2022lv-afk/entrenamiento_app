@@ -8,7 +8,8 @@ String buildColoredSvg(
   String rawSvg,
   Map<Muscle, double> heatmap, {
   Color? overrideColor,
-  bool percentageScale = false, // 👈 NUEVO (seguro)
+  double opacityMultiplier = 1.0, // 👈 NUEVO
+
 }) {
   String svg = rawSvg;
 
@@ -18,12 +19,18 @@ String buildColoredSvg(
     if (value <= 0) {
       svg = _applyTransparentById(svg, muscle.name);
     } else {
-      final color = overrideColor ??
-          (percentageScale
-              ? heatmapColorPercent(value)
-              : heatmapColor(value));
+      final color = overrideColor ?? heatmapColor(value);
 
-      final opacity = 0.65; // 👈 AJUSTABLE (0.5–0.8 recomendado)
+
+      final v = value.clamp(0, 100).toDouble();
+final normalized = v / 60; // 0.0 → 1.0
+double baseOpacity = 0.3 + (normalized * 0.5);
+
+// 🔥 Aplicar multiplicador
+final opacity = (baseOpacity * opacityMultiplier)
+    .clamp(0.15, 0.65);
+
+
       svg = _applyColorById(svg, muscle.name, color, opacity);
     }
   }
@@ -101,58 +108,57 @@ String _applyTransparentById(
 /// Escala ORIGINAL (para volumen / fatiga acumulada)
 /// ------------------------------------------------------
 Color heatmapColor(double value) {
-  // clamp de seguridad
-  final v = value.clamp(0, 65);
+  final v = value.clamp(0, 100).toDouble();
 
-  // 🔹 MUY BAJO = INVISIBLE
-  if (v < 5) {
+  // 🔲 Transparente hasta 4
+  if (v < 4) {
     return Colors.transparent;
-  } 
-  // 🔵 BAJO
-  else if (v < 18) {
-    return const Color(0xFF26C6DA); // cian
-  } 
-  // 🔵 MEDIA
-  else if (v < 30) {
-    return const Color(0xFF1E88E5); // azul
-  } 
-  // 🟣 MEDIA-ALTA
-  else if (v < 48) {
-    return const Color(0xFF5C6BC0); // azul-violeta
-  } 
-  // 🟪 ALTA
-  else if (v < 65) {
-    return const Color(0xFF3949AB); // índigo
-  } 
-  // 🟪 MUY ALTA (tope)
-  else {
-    return const Color(0xFF311B92); // morado profundo
   }
+
+  // Reescalamos 4–100 → 0–96
+  final scaled = (v - 4) / 96;
+
+  // 🔹 0–0.25 → Celeste → Azul
+  if (scaled <= 0.25) {
+    final t = scaled / 0.25;
+    return Color.lerp(
+      const Color(0xFF4FC3F7),
+      const Color(0xFF1565C0),
+      t,
+    )!;
+  }
+
+  // 🔹 0.25–0.5 → Azul → Morado
+  if (scaled <= 0.5) {
+    final t = (scaled - 0.25) / 0.25;
+    return Color.lerp(
+      const Color(0xFF1565C0),
+      const Color(0xFF7B1FA2),
+      t,
+    )!;
+  }
+
+  // 🔹 0.5–0.75 → Morado → Naranjo
+  if (scaled <= 0.75) {
+    final t = (scaled - 0.5) / 0.25;
+    return Color.lerp(
+      const Color(0xFF7B1FA2),
+      const Color(0xFFFF8F00),
+      t,
+    )!;
+  }
+
+  // 🔴 0.75–1 → Naranjo → Rojo INTENSO
+  final t = (scaled - 0.75) / 0.25;
+  return Color.lerp(
+    const Color(0xFFFF8F00),
+    const Color(0xFFB71C1C), // rojo intenso real
+    t,
+  )!;
 }
 
 
 
-
-/// ------------------------------------------------------
-/// Escala PORCENTUAL (0.0 – 1.0) 👉 para ejercicios
-/// ------------------------------------------------------
-Color heatmapColorPercent(double value) {
-  final percent = (value * 100).clamp(0, 100);
-
-  if (percent <= 10) {
-    return const Color(0xFFE3F2FD); // celeste cielo
-  } else if (percent <= 25) {
-    return const Color(0xFFBBDEFB); // celeste claro
-  } else if (percent <= 40) {
-    return const Color(0xFF64B5F6); // azul claro
-  } else if (percent <= 60) {
-    return const Color(0xFF42A5F5); // azul medio
-  } else if (percent <= 80) {
-    return const Color(0xFF1E88E5); // azul fuerte
-  } else {
-    return const Color(0xFF0D47A1); // azul intenso
-  }
-}
 
 
 /// ------------------------------------------------------

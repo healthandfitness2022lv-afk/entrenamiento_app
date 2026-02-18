@@ -26,6 +26,8 @@ class _MyWorkoutDetailsScreenState extends State<MyWorkoutDetailsScreen> {
   late Map<String, dynamic> workoutData;
   late List<Map<String, dynamic>> performed;
   Map<Muscle, double> centralizedLoad = {};
+  final Map<Muscle, double> circuitAcc = {};
+
 
   bool loading = true;
 
@@ -345,7 +347,10 @@ for (int i = 0; i < setsList.length; i++) {
   sets: 1,
   reps: reps,
   rpe: (exEntry['rpe'] as num).toDouble(),
-  weight: (exEntry['weight'] as num?)?.toDouble(),
+  weight: exEntry['weight'] == null
+    ? null
+    : (exEntry['weight'] as num).toDouble(),
+
   perSide: exEntry['perSide'] == true, // 👈 CLAVE
   muscleWeights: muscleWeights,
   sourceType: 'Circuito',
@@ -406,123 +411,6 @@ for (int i = 0; i < setsList.length; i++) {
     return _resolveMuscles(muscleNames);
   }
 
-  void _showHeatmapFullscreen(
-    BuildContext context,
-    Map<Muscle, double> heatmap,
-  ) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) {
-        return Dialog(
-          insetPadding: const EdgeInsets.all(12),
-          backgroundColor: Colors.black,
-          child: Row(
-            children: [
-              // =======================
-              // 🧍 FRONTAL
-              // =======================
-              Expanded(
-                flex: 2,
-                child: InteractiveViewer(
-                  minScale: 1,
-                  maxScale: 4,
-                  child: AspectRatio(
-                    aspectRatio: 3 / 5,
-                    child: BodyHeatmap(heatmap: heatmap, showBack: false),
-                  ),
-                ),
-              ),
-
-              const SizedBox(width: 8),
-
-              // =======================
-              // 🧍 POSTERIOR
-              // =======================
-              Expanded(
-                flex: 2,
-                child: InteractiveViewer(
-                  minScale: 1,
-                  maxScale: 4,
-                  child: AspectRatio(
-                    aspectRatio: 3 / 5,
-                    child: BodyHeatmap(heatmap: heatmap, showBack: true),
-                  ),
-                ),
-              ),
-
-              const SizedBox(width: 12),
-
-              // =======================
-              // 📋 LISTA DE MÚSCULOS
-              // =======================
-              Expanded(
-                flex: 3,
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  color: Colors.black87,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                        Expanded(
-                        child: SingleChildScrollView(
-                          child: Column(
-  children: (() {
-    final entries = heatmap.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    return entries.map((e) {
-      final m = e.key;
-      final value = e.value;
-
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                m.label,
-                style: TextStyle(
-                  color: value == 0 ? Colors.grey : Colors.white,
-                ),
-              ),
-            ),
-            Text(
-              value.toStringAsFixed(1),
-              style: TextStyle(
-                color: value == 0 ? Colors.grey : Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      );
-    }).toList();
-  })(),
-),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // =======================
-              // ❌ CERRAR
-              // =======================
-              IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-
-
   // ======================================================
   // 🖥 UI
   // ======================================================
@@ -560,30 +448,21 @@ final heatmap = centralizedLoad;
                 Expanded(
                   child: SizedBox(
                     height: 360,
-                    child: GestureDetector(
-                      onTap: () =>
-                          _showHeatmapFullscreen(context, heatmap),
-                      child: BodyHeatmap(
-                        heatmap: heatmap,
-                        showBack: false,
-
-                      ),
-                    ),
+                    child: BodyHeatmap(
+  heatmap: heatmap,
+  showBack: false,
+),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: SizedBox(
                     height: 360,
-                    child: GestureDetector(
-                      onTap: () =>
-                          _showHeatmapFullscreen(context, heatmap),
-                      child: BodyHeatmap(
-                        heatmap: heatmap,
-                        showBack: true,
+                    child: BodyHeatmap(
+  heatmap: heatmap,
+  showBack: true,
+),
 
-                      ),
-                    ),
                   ),
                 ),
               ],
@@ -624,37 +503,34 @@ final heatmap = centralizedLoad;
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              "Carga muscular",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          _heatmapLegend(),
-                          IconButton(
-                            icon: const Icon(Icons.flip),
-                            onPressed: () =>
-                                setState(() => showBack = !showBack),
-                          ),
-                        ],
-                      ),
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    const Expanded(
+      child: Text(
+        "Carga muscular",
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    ),
+    _heatmapLegendBar(),  // 👈 ESTA
+    IconButton(
+      icon: const Icon(Icons.flip),
+      onPressed: () =>
+          setState(() => showBack = !showBack),
+    ),
+  ],
+),
+
                       const SizedBox(height: 8),
                       SizedBox(
                         height: 320,
-                        child: GestureDetector(
-                          onTap: () =>
-                              _showHeatmapFullscreen(context, heatmap),
-                          child: BodyHeatmap(
-                            heatmap: heatmap,
-                            showBack: showBack,
+                        child: BodyHeatmap(
+  heatmap: heatmap,
+  showBack: showBack,
+),
 
-                          ),
-                        ),
                       ),
                     ],
                   ),
@@ -687,7 +563,7 @@ final heatmap = centralizedLoad;
 double _structureFactor(WorkoutSet s) {
   switch (s.sourceType) {
     case 'Circuito':
-      return 1.0;
+      return 1.2;
     case 'Tabata':
       return 2.5;
     default:
@@ -781,6 +657,7 @@ double _calculateSessionFatiguePercent() {
     children: circuitos.asMap().entries.map((entry) {
       final index = entry.key;
       final c = entry.value;
+      final Map<Muscle, double> circuitAcc = {};
 
       final rounds =
           List<Map<String, dynamic>>.from(c['rounds']);
@@ -824,7 +701,11 @@ double _calculateSessionFatiguePercent() {
                     const SizedBox(height: 4),
 
                     ...exercises.map((ex) {
-  final weight = ex['weight'];
+  final double? weight =
+    ex['weight'] == null
+        ? null
+        : (ex['weight'] as num).toDouble();
+
   final reps = ex['reps'];
   final seconds = ex['seconds'];
 
@@ -835,10 +716,22 @@ double _calculateSessionFatiguePercent() {
   final double exerciseFactor =
       exerciseTypeFactorOf(exData?['exerciseType']);
 
-  final double blockFactor = 1.0; // Circuito
+  final tempSet = WorkoutSet(
+  exercise: ex['exercise'],
+  sets: 1,
+  reps: reps ?? 1,
+  rpe: rpe,
+  weight: weight,
+  muscleWeights: const {}, // no importa aquí
+  sourceType: 'Circuito',
+);
+
+final double blockFactor = _structureFactor(tempSet);
+
 
   final double fatigue =
       rpe * fRpe * exerciseFactor * blockFactor;
+
 
   // ===============================
   // 🔥 CARGA MUSCULAR (POR EJERCICIO)
@@ -858,7 +751,13 @@ double _calculateSessionFatiguePercent() {
           e.value;
 
       acc[e.key] = (acc[e.key] ?? 0) + v;
-      totalAcc[e.key] = (totalAcc[e.key] ?? 0) + v;
+
+circuitAcc[e.key] =
+    (circuitAcc[e.key] ?? 0) + v;
+
+totalAcc[e.key] =
+    (totalAcc[e.key] ?? 0) + v;
+
 
     }
   }
@@ -918,7 +817,22 @@ double _calculateSessionFatiguePercent() {
   );
 }).toList(),
 
+const SizedBox(height: 6),
 
+if (circuitAcc.isNotEmpty)
+  Text(
+    "Total circuito ${index + 1}: " +
+        (circuitAcc.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value)))
+            .map((e) =>
+                "${e.key.label}: ${e.value.toStringAsFixed(2)}")
+            .join(" · "),
+    style: TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.bold,
+      color: _sourceColor('Circuito'),
+    ),
+  ),
                   ],
                 ),
               );
@@ -930,7 +844,11 @@ double _calculateSessionFatiguePercent() {
   ),
 );
 
+
+
         }
+
+        
 
         // ======================================================
         // 🔵 SERIES / 🟣 TABATA → WorkoutSet
@@ -986,7 +904,13 @@ double _calculateSessionFatiguePercent() {
         e.value;
 
     acc[e.key] = (acc[e.key] ?? 0) + v;
-    totalAcc[e.key] = (totalAcc[e.key] ?? 0) + v;
+
+circuitAcc[e.key] =
+    (circuitAcc[e.key] ?? 0) + v;
+
+totalAcc[e.key] =
+    (totalAcc[e.key] ?? 0) + v;
+
   }
 }
 
@@ -1254,52 +1178,49 @@ Text(
   // ======================================================
   // 🎨 LEYENDA DE COLORES
   // ======================================================
-  Widget _heatmapLegend() {
-    Widget row(double value, String label, String range) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 14,
-              height: 14,
-              decoration: BoxDecoration(
-                color: heatmapColor(value)
-,
-
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: const TextStyle(fontSize: 11)),
-                Text(
-                  range,
-                  style: const TextStyle(fontSize: 10, color: Colors.grey),
-                ),
-              ],
-            ),
-          ],
+  Widget _heatmapLegendBar() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: 12),
+      const Text(
+        "Escala de fatiga (0–100)",
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+      const SizedBox(height: 6),
+      Container(
+        height: 14,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          gradient: const LinearGradient(
+            stops: [0.0, 0.04, 0.28, 0.52, 0.76, 0.95, 1.0],
+            colors: [
+              Colors.transparent,        // 0–4
+              Color(0xFF4FC3F7),          // Celeste
+              Color(0xFF1565C0),          // Azul
+              Color(0xFF7B1FA2),          // Morado
+              Color(0xFFFF8F00),          // Naranjo
+              Color(0xFFB71C1C),          // Rojo intenso
+              Color(0xFFB71C1C),          // Rojo sólido 95–100
+            ],
+          ),
         ),
-      );
-    }
-
-    return Column(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    row(0.05, "Muy baja", "0–10%"),
-    row(0.20, "Baja", "10–25%"),
-    row(0.35, "Media", "25–40%"),
-    row(0.55, "Media–alta", "40–60%"),
-    row(0.75, "Alta", "60–80%"),
-    row(0.95, "Muy alta", "80–100%"),
-  ],
-);
-  }
+      ),
+      const SizedBox(height: 4),
+      const Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text("0", style: TextStyle(fontSize: 10)),
+          Text("50", style: TextStyle(fontSize: 10)),
+          Text("100", style: TextStyle(fontSize: 10)),
+        ],
+      ),
+    ],
+  );
 }
+
+
+  }
 
 class GroupedWorkout {
   final String sourceType;

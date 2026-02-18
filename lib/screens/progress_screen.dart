@@ -5,7 +5,6 @@ import 'exercise_rm_detail_screen.dart';
 import '../services/workout_metrics_service.dart';
 import '../services/workout_rm_service.dart';
 import '../services/progress_alert_service.dart';
-import '../utils/rpe_factor.dart';
 
 class ProgressScreen extends StatefulWidget {
   const ProgressScreen({super.key});
@@ -23,7 +22,7 @@ class _ProgressScreenState extends State<ProgressScreen>
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl = TabController(length: 3, vsync: this);
 
     _loadTrackedExercises();
   }
@@ -57,12 +56,14 @@ class _ProgressScreenState extends State<ProgressScreen>
       appBar: AppBar(
         title: const Text("Progreso"),
         bottom: TabBar(
-          controller: _tabCtrl,
-          tabs: const [
-            Tab(text: "Resumen"),
-            Tab(text: "Ejercicios"),
-          ],
-        ),
+  controller: _tabCtrl,
+  tabs: const [
+    Tab(text: "Resumen"),
+    Tab(text: "Ejercicios"),
+    Tab(text: "Logros"), // NUEVO
+  ],
+),
+
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
@@ -84,20 +85,620 @@ class _ProgressScreenState extends State<ProgressScreen>
           return TabBarView(
             controller: _tabCtrl,
             children: [
-              _buildSummary(docs),
-              _buildExercisePRs(docs),
-            ],
+  _buildSummary(docs),
+  _buildExercisePRs(docs),
+  _buildAchievementsTab(docs), // NUEVO
+],
+
           );
         },
       ),
     );
   }
 
+  Widget _legendRow(
+    ProgressAlertType type, String text) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      children: [
+        Icon(
+          _iconForAlert(type),
+          color: _colorForAlert(type),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text)),
+      ],
+    ),
+  );
+}
+
+Map<String, List<Map<String, dynamic>>> _buildFullRMHistoryUpToDate(
+  List<QueryDocumentSnapshot> docs,
+  DateTime targetDate,
+) {
+  final Map<String, List<Map<String, dynamic>>> rmHistory = {};
+
+  for (final d in docs) {
+    final date = (d['date'] as Timestamp).toDate();
+
+    if (date.isAfter(targetDate)) continue;
+
+    final performed =
+        WorkoutMetricsService.performedFromDoc(d);
+
+    final sets = WorkoutRMService
+        .extractAllValidRMSetCandidates(performed)
+        .where((s) => _trackedExercises.contains(s['exercise']))
+        .toList();
+
+    for (final s in sets) {
+      final ex = s['exercise'];
+
+      final weight = (s['weight'] as num).toDouble();
+final reps = (s['reps'] as num).toInt();
+
+final rm = weight * (1 + reps / 30);
+
+
+      rmHistory.putIfAbsent(ex, () => []);
+
+      rmHistory[ex]!.add({
+        'date': date,
+        'rm': rm,
+        'weight': (s['weight'] as num?)?.toDouble(),
+        'reps': (s['reps'] as num?)?.toInt(),
+      });
+    }
+  }
+
+  return rmHistory;
+}
+
+
+
+
+
+DateTimeRange? _achievementRange;
+
+Widget _buildAchievementsTab(List<QueryDocumentSnapshot> docs) {
+  final now = DateTime.now();
+
+  final defaultStart = now.subtract(const Duration(days: 7));
+  final range = _achievementRange ??
+      DateTimeRange(start: defaultStart, end: now);
+
+  final filteredDocs = docs.where((d) {
+    final date = (d['date'] as Timestamp).toDate();
+    return date.isAfter(range.start.subtract(const Duration(days: 1))) &&
+        date.isBefore(range.end.add(const Duration(days: 1)));
+  }).toList();
+
+  final Map<DateTime, List<ProgressAlert>> achievementsByDate = {};
+
+  for (final d in filteredDocs) {
+    final date = (d['date'] as Timestamp).toDate();
+
+    WorkoutMetricsService.performedFromDoc(d);
+
+    final rmHistory = _buildFullRMHistoryUpToDate(docs, date);
+
+
+    final alerts = ProgressAlertService.analyzeSessionImpact(
+  rmHistory: rmHistory,
+  targetDate: date,
+);
+
+
+    if (alerts.isNotEmpty) {
+      final dayKey = DateTime(date.year, date.month, date.day);
+      achievementsByDate[dayKey] = alerts;
+    }
+  }
+
+  final sortedDates = achievementsByDate.keys.toList()
+    ..sort((a, b) => b.compareTo(a));
+
+  return Column(
+    children: [
+      const SizedBox(height: 8),
+
+      // 🔹 Selector de rango
+      Row(
+  mainAxisAlignment: MainAxisAlignment.center,
+  children: [
+    TextButton.icon(
+      icon: const Icon(Icons.date_range),
+      label: Text(
+          "${formatDate(range.start)} - ${formatDate(range.end)}"),
+      onPressed: () async {
+        final picked = await showDateRangePicker(
+          context: context,
+          firstDate: DateTime(2020),
+          lastDate: DateTime.now(),
+          initialDateRange: range,
+        );
+
+        if (picked != null) {
+          setState(() {
+            _achievementRange = picked;
+          });
+        }
+      },
+    ),
+
+    IconButton(
+      icon: const Icon(Icons.help_outline),
+      onPressed: () {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text("Significado de íconos"),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _legendRow(ProgressAlertType.newPR, "Nuevo PR"),
+                _legendRow(ProgressAlertType.heaviestSet,
+                    "Serie más pesada histórica"),
+                _legendRow(ProgressAlertType.sessionVolumePR,
+                    "Récord de volumen"),
+                _legendRow(ProgressAlertType.improvedEfficiency,
+                    "Mejor eficiencia"),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cerrar"),
+              )
+            ],
+          ),
+        );
+      },
+    ),
+  ],
+),
+
+
+      const Divider(),
+
+      Expanded(
+  child: sortedDates.isEmpty
+      ? const Center(child: Text("Sin logros en este rango"))
+      : ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: sortedDates.length,
+          itemBuilder: (context, index) {
+            final date = sortedDates[index];
+            final alerts = achievementsByDate[date]!;
+
+            return Card(
+              elevation: 3,
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ExpansionTile(
+                leading: const Icon(
+                  Icons.emoji_events,
+                  color: Colors.amber,
+                ),
+                title: Text(
+                  formatDate(date),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(
+                  "${alerts.length} logro${alerts.length > 1 ? 's' : ''}",
+                ),
+                children: [
+  _buildCompactAchievementView(alerts),
+],
+
+
+              ),
+            );
+          },
+        ),
+),
+
+    ],
+  );
+
+  
+}
+
+Widget _buildCompactAchievementView(
+    List<ProgressAlert> alerts) {
+  final Map<String, List<ProgressAlertType>> byExercise = {};
+
+  for (final a in alerts) {
+    final ex = a.evidence['exercise'] ?? 'Ejercicio';
+    byExercise.putIfAbsent(ex, () => []);
+    byExercise[ex]!.add(a.type);
+  }
+
+  return Column(
+    children: byExercise.entries.map((entry) {
+      final exercise = entry.key;
+      final types = entry.value;
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(
+            vertical: 8, horizontal: 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Text(
+                exercise,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+            Row(
+              children: types.map((type) {
+                return Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4),
+                  child: GestureDetector(
+  onTap: () {
+  final exerciseAlerts = alerts
+      .where((a) => a.evidence['exercise'] == exercise)
+      .toList();
+
+  _showExerciseAchievementDetails(exercise, exerciseAlerts);
+},
+
+  child: Icon(
+    _iconForAlert(type),
+    color: _colorForAlert(type),
+    size: 22,
+  ),
+),
+
+                );
+              }).toList(),
+            )
+          ],
+        ),
+      );
+    }).toList(),
+  );
+}
+
+Widget _achievementMetricBlock({
+  required String prev,
+  required String curr,
+  double? delta,
+}) {
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Anterior",
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            prev,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Actual",
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            curr,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+      if (delta != null)
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Mejora",
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "${delta >= 0 ? '+' : ''} ${(delta * 100).toStringAsFixed(1)}%",
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
+              ),
+            ),
+          ],
+        ),
+    ],
+  );
+}
+
+
+void _showExerciseAchievementDetails(
+  String exercise,
+  List<ProgressAlert> alerts,
+) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) {
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              exercise,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            ...alerts.map((a) {
+  final prev = a.evidence['previous'];
+  final curr = a.evidence['current'];
+  final delta = a.evidence['deltaPct'];
+
+  final prevSet = a.evidence['previousSet'];
+  final currSet = a.evidence['currentSet'];
+
+
+  return Container(
+    margin: const EdgeInsets.only(bottom: 18),
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(18),
+      color: Theme.of(context)
+          .colorScheme
+          .surfaceVariant
+          .withOpacity(0.5),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              _iconForAlert(a.type),
+              color: _colorForAlert(a.type),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                a.title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 14),
+
+        // =========================
+        // NEW PR
+        // =========================
+        if (a.type == ProgressAlertType.newPR &&
+    currSet is Map)
+  Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      if (prevSet is Map)
+        _achievementMetricBlock(
+          prev:
+              "${prevSet['reps']} x ${prevSet['weight']} kg",
+          curr:
+              "${currSet['reps']} x ${currSet['weight']} kg",
+          delta: delta,
+        )
+      else
+        Text(
+          "Primera marca registrada",
+          style: TextStyle(
+            fontSize: 13,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+
+      const SizedBox(height: 10),
+
+      // 🔥 RM estimados
+      if (prev != null)
+        Text(
+          "RM anterior: ${prev.toStringAsFixed(1)} kg",
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.grey,
+          ),
+        ),
+
+      Text(
+        "RM actual: ${curr.toStringAsFixed(1)} kg",
+        style: const TextStyle(
+          fontSize: 12,
+          color: Colors.grey,
+        ),
+      ),
+    ],
+  ),
+
+        // =========================
+        // HEAVIEST SET
+        // =========================
+        if (a.type == ProgressAlertType.heaviestSet &&
+    prevSet is Map &&
+    currSet is Map)
+
+  Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _achievementMetricBlock(
+        prev: "${prevSet['reps']} x ${prevSet['weight']} kg",
+        curr: "${currSet['reps']} x ${currSet['weight']} kg",
+        delta: delta,
+      ),
+
+      const SizedBox(height: 6),
+
+      Text(
+        "Total serie actual: ${(currSet['reps'] * currSet['weight']).toStringAsFixed(0)} kg",
+        style: const TextStyle(
+          fontSize: 12,
+          color: Colors.grey,
+        ),
+      ),
+    ],
+  ),
+        // =========================
+        // SESSION VOLUME
+        // =========================
+        if (a.type == ProgressAlertType.sessionVolumePR)
+  Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _achievementMetricBlock(
+        prev: "${prev.toStringAsFixed(1)} kg",
+        curr: "${curr.toStringAsFixed(1)} kg",
+        delta: delta,
+      ),
+
+      const SizedBox(height: 12),
+
+      if (a.evidence['previousSets'] != null &&
+          (a.evidence['previousSets'] as List).isNotEmpty) ...[
+        const Text(
+          "Sesión anterior récord:",
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: (a.evidence['previousSets'] as List)
+              .map<Widget>((s) => Chip(
+                    label: Text(
+                        "${s['reps']} x ${s['weight']} kg"),
+                  ))
+              .toList(),
+        ),
+        const SizedBox(height: 12),
+      ],
+
+      const Text(
+        "Sesión actual:",
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
+      const SizedBox(height: 6),
+      Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: (a.evidence['currentSets'] as List)
+            .map<Widget>((s) => Chip(
+                  label: Text(
+                      "${s['reps']} x ${s['weight']} kg"),
+                ))
+            .toList(),
+      ),
+    ],
+  ),
+
+
+      ],
+    ),
+  );
+}).toList(),
+
+
+            const SizedBox(height: 10),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+
   String formatDate(DateTime d) {
     return "${d.day.toString().padLeft(2, '0')}/"
         "${d.month.toString().padLeft(2, '0')}/"
         "${d.year}";
   }
+
+  IconData _iconForAlert(ProgressAlertType type) {
+  switch (type) {
+    case ProgressAlertType.newPR:
+      return Icons.emoji_events;
+
+    case ProgressAlertType.heaviestSet:
+      return Icons.fitness_center;
+
+    case ProgressAlertType.sessionVolumePR:
+      return Icons.bar_chart;
+
+    case ProgressAlertType.bestWeekEver:
+      return Icons.calendar_today;
+
+    case ProgressAlertType.improvedEfficiency:
+      return Icons.psychology;
+
+    case ProgressAlertType.rpeWithoutProgress:
+      return Icons.warning_amber;
+
+    case ProgressAlertType.stagnation:
+      return Icons.trending_flat;
+  }
+}
+
+Color _colorForAlert(ProgressAlertType type) {
+  switch (type) {
+    case ProgressAlertType.newPR:
+      return Colors.amber;
+
+    case ProgressAlertType.heaviestSet:
+      return Colors.deepPurple;
+
+    case ProgressAlertType.sessionVolumePR:
+      return Colors.blue;
+
+    case ProgressAlertType.bestWeekEver:
+      return Colors.green;
+
+    case ProgressAlertType.improvedEfficiency:
+      return Colors.teal;
+
+    case ProgressAlertType.rpeWithoutProgress:
+      return Colors.redAccent;
+
+    case ProgressAlertType.stagnation:
+      return Colors.orange;
+  }
+}
+
 
   // ======================================================
   // 📊 RESUMEN + ALERTAS
@@ -146,19 +747,17 @@ class _ProgressScreenState extends State<ProgressScreen>
 
       for (final s in sets) {
         final ex = s['exercise'];
-        final rm = WorkoutRMService.estimate1RM(
-  weight: (s['weight'] as num).toDouble(),
-  reps: (s['reps'] as num).toInt(),
-  rpe: (s['rpe'] as num).toDouble(),
-  rpeFactor: rpeFactor,
-);
+        final weight = (s['weight'] as num).toDouble();
+final reps = (s['reps'] as num).toInt();
+
+final rm = weight * (1 + reps / 30);
+
 
 
         rmHistory.putIfAbsent(ex, () => []);
         rmHistory[ex]!.add({
   'date': date,
   'rm': rm,
-  'rpe': s['rpe'],
   'weight': (s['weight'] as num?)?.toDouble(),
   'reps': (s['reps'] as num?)?.toInt(),
 });
@@ -168,11 +767,9 @@ class _ProgressScreenState extends State<ProgressScreen>
 
     final avgRpe = rpeCount > 0 ? rpeSum / rpeCount : 0.0;
 
-    final alerts = ProgressAlertService.analyze(
+    final alerts = ProgressAlertService.analyzeHistorical(
       rmHistory: rmHistory,
-      weeklyVolume: volumeByWeek.entries
-          .map((e) => {'week': e.key, 'volume': e.value})
-          .toList(),
+  
     );
 
     alerts.sort((a, b) {
@@ -227,45 +824,8 @@ class _ProgressScreenState extends State<ProgressScreen>
             card("RPE promedio", avgRpe > 0 ? avgRpe.toStringAsFixed(1) : "—"),
           ],
         ),
-
-        if (alerts.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          const Text(
-            "Alertas",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          ...alerts.map(
-            (a) => ListTile(
-              leading: Icon(
-                a.type == ProgressAlertType.newPR
-                    ? Icons.emoji_events
-                    : a.type == ProgressAlertType.stagnation
-                    ? Icons.trending_flat
-                    : Icons.warning,
-                color: a.type == ProgressAlertType.newPR
-                    ? Colors.amber
-                    : a.type == ProgressAlertType.stagnation
-                    ? Colors.orange
-                    : Colors.red,
-              ),
-              title: Text(a.title),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(a.explanation),
-                  const SizedBox(height: 4),
-                  if (a.evidence['date'] != null)
-                    Text(
-                      "Fecha: ${formatDate(a.evidence['date'] as DateTime)}",
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                ],
-              ),
-            ),
-          ),
         ],
-      ],
+    
     );
   }
 

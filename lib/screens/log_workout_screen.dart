@@ -9,9 +9,6 @@ import '../services/workout_load_service.dart';
 import 'add_workout_screen.dart';
 import '../services/workout_suggestion_service.dart';
 
-
-
-
 class LogWorkoutScreen extends StatefulWidget {
   final Map<String, dynamic>? existingWorkout;
   final DocumentReference? workoutRef;
@@ -37,14 +34,8 @@ class _LogWorkoutScreenState extends State<LogWorkoutScreen> {
 final Map<String, List<TextEditingController>> seriesWeightCtrl = {};
 final Map<int, Map<int, Map<String, ValueNotifier<bool>>>> circuitoDone = {};
 final Set<int> startedTabataBlocks = {};
-
-
-
-
-
-  
-
-  // estado por bloque
+DateTime? workoutStartedAt;
+final Map<String, int?> _suggestedRepsCache = {};
   final Map<int, bool> expandedBlocks = {};
   final Map<int, int> circuitoRound = {};
   List<Map<String, dynamic>> availableRoutines = [];
@@ -80,16 +71,20 @@ final Map<int, Map<int, Map<String, int>>> circuitoRpePorRonda = {};
   final Map<String, List<Map<String, dynamic>>> seriesData = {};
 
   @override
-  void dispose() {
-    tabataTimer.stop(); // 🔴 CLAVE
-    super.dispose();
-  }
+void dispose() {
+  tabataTimer.stop();
+  super.dispose();
+}
+
 
 @override
 void initState() {
   super.initState();
+  workoutStartedAt = DateTime.now(); // 🔥 inicio automático
   tabataTimer = TabataTimerService();
   _loadExerciseCatalog(); // 👈 NUEVO
+
+
 
   if (isEdit) {
   _loadWorkoutForEdit();
@@ -100,6 +95,97 @@ void initState() {
 }
 
 }
+
+Future<Map<String, dynamic>?> _getTodayPlannedRoutine() async {
+  final uid = FirebaseAuth.instance.currentUser!.uid;
+
+  final today = DateTime.now();
+  final start = DateTime(today.year, today.month, today.day);
+  final end = start.add(const Duration(days: 1));
+
+  final snap = await FirebaseFirestore.instance
+      .collection('planned_workouts')
+      .where('athleteId', isEqualTo: uid)
+      .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+      .where('date', isLessThan: Timestamp.fromDate(end))
+      .limit(1)
+      .get();
+
+  if (snap.docs.isEmpty) return null;
+
+  final planned = snap.docs.first;
+
+  final routineDoc = await FirebaseFirestore.instance
+      .collection('routines')
+      .doc(planned['routineId'])
+      .get();
+
+  if (!routineDoc.exists) return null;
+
+  return {
+    'id': routineDoc.id,
+    ...routineDoc.data()!,
+  };
+}
+
+
+
+void _loadRepsSuggestionIfNeeded(
+  String exercise,
+  double weight,
+) async {
+  final key = "$exercise-$weight";
+
+  if (_suggestedRepsCache.containsKey(key)) return;
+
+  final uid = FirebaseAuth.instance.currentUser!.uid;
+
+  final value = await WorkoutSuggestionService.suggestMaxRepsForWeight(
+    userId: uid,
+    exercise: exercise,
+    targetWeight: weight,
+  );
+
+  if (!mounted) return;
+
+  setState(() {
+    _suggestedRepsCache[key] = value;
+  });
+}
+
+
+Widget _suggestedRepsText(String exercise, double weight) {
+  final key = "$exercise-$weight";
+
+  if (!_suggestedRepsCache.containsKey(key)) {
+    _loadRepsSuggestionIfNeeded(exercise, weight);
+    return const SizedBox();
+  }
+
+  final value = _suggestedRepsCache[key];
+
+  if (value == null) {
+    return const Text(
+      "Sin historial para ese peso",
+      style: TextStyle(
+        fontSize: 12,
+        color: Colors.grey,
+        fontStyle: FontStyle.italic,
+      ),
+    );
+  }
+
+  return Text(
+    "Máx reps con ese peso: $value",
+    style: const TextStyle(
+      fontSize: 12,
+      color: Colors.blue,
+      fontStyle: FontStyle.italic,
+    ),
+  );
+}
+
+
 
 void _loadSuggestionIfNeeded(
   String exercise,
@@ -145,7 +231,7 @@ Widget _suggestedWeightText(String exercise, int reps) {
   }
 
   return Text(
-    "Sugerido: ${value.toStringAsFixed(1)} kg",
+    "Sugerido para esas reps: ${value.toStringAsFixed(1)} kg",
     style: const TextStyle(
       fontSize: 12,
       color: Colors.green,
@@ -862,9 +948,13 @@ Future<void> _confirmDeleteExercise(
       final String key = "$index-$name";
 
       // 🛡️ PROTECCIÓN CRÍTICA
-      if (!seriesData.containsKey(key) || seriesData[key]!.isEmpty) {
-        return const SizedBox();
-      }
+      if (!seriesData.containsKey(key) ||
+    seriesData[key]!.isEmpty ||
+    !seriesRepsCtrl.containsKey(key) ||
+    !seriesWeightCtrl.containsKey(key)) {
+  return const SizedBox();
+}
+
 
       final bool isTimeBased =
           seriesData[key]![0]['valueType'] == 'time';
@@ -1003,24 +1093,44 @@ Future<void> _confirmDeleteExercise(
     children: [
       // ================= PESO =================
       TextField(
-  controller: seriesWeightCtrl[key]![i],
-  keyboardType: TextInputType.number,
-  onChanged: (v) {
-    seriesData[key]![i]['weight'] = int.tryParse(v) ?? 0;
-  },
-),
+        controller: seriesWeightCtrl[key]![i],
+        keyboardType: TextInputType.number,
+        onChanged: (v) {
+  seriesData[key]![i]['weight'] = int.tryParse(v) ?? 0;
 
+  // Limpia cache viejo de ese ejercicio
+  _suggestedRepsCache.removeWhere((k, _) => k.startsWith("$name-"));
 
-      // ================= SUGERENCIA =================
-      if (seriesData[key]![i]['reps'] != null)
-  Padding(
-    padding: const EdgeInsets.only(top: 4),
-    child: _suggestedWeightText(
-      name,
-      seriesData[key]![i]['reps'],
-    ),
-  ),
+  setState(() {});
+},
 
+      ),
+      Builder(
+        builder: (context) {
+          final weightText = seriesWeightCtrl[key]![i].text;
+          final weight = double.tryParse(weightText);
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (weight != null && weight > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: _suggestedRepsText(name, weight),
+                ),
+              // ================= SUGERENCIA =================
+              if (seriesData[key]![i]['reps'] != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: _suggestedWeightText(
+                    name,
+                    seriesData[key]![i]['reps'],
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
     ],
   ),
 ),
@@ -1774,33 +1884,69 @@ int _countCompletedCircuitRounds(
 
 
 Future<void> _askWorkoutMode() async {
+  final plannedRoutine = await _getTodayPlannedRoutine();
+
   final result = await showDialog<String>(
     context: context,
     barrierDismissible: false,
     builder: (_) => AlertDialog(
       title: const Text("¿Cómo quieres entrenar hoy?"),
-      content: const Text(
-        "Puedes seguir una rutina asignada o entrenar libremente.",
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (plannedRoutine != null) ...[
+            const Text(
+              "Tienes un entrenamiento planificado para hoy:",
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              plannedRoutine['name'],
+              style: const TextStyle(color: Colors.blue),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ],
       ),
       actions: [
+
+        if (plannedRoutine != null)
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, "planned"),
+            child: const Text("Usar rutina de hoy"),
+          ),
+
+        TextButton(
+          onPressed: () => Navigator.pop(context, "routine"),
+          child: const Text("Elegir otra rutina"),
+        ),
+
         TextButton(
           onPressed: () => Navigator.pop(context, "free"),
           child: const Text("Entrenamiento libre"),
-        ),
-        ElevatedButton(
-          onPressed: () => Navigator.pop(context, "routine"),
-          child: const Text("Usar rutina asignada"),
         ),
       ],
     ),
   );
 
+  if (result == "planned" && plannedRoutine != null) {
+    setState(() {
+      routine = plannedRoutine;
+    });
+    _initializeRoutineState();
+    loading = false;
+    return;
+  }
+
   if (result == "free") {
     _startFreeWorkout();
-  } else {
-    await _loadAvailableRoutines();
+    return;
   }
+
+  await _loadAvailableRoutines();
 }
+
 
 
 void _startFreeWorkout() {
@@ -1912,27 +2058,40 @@ String normalizeExerciseName(dynamic raw) {
 }
 
 
-
   Future<void> _saveWorkout() async {
     
     if (_saving) return;
 
     void setStep(String step) {
-      setState(() {
-        _saving = true;
-        _savingStep = step;
-      });
-    }
+  if (!mounted) return;
+
+  setState(() {
+    _saving = true;
+    _savingStep = step;
+  });
+}
+
 
     void finish() {
-      setState(() {
-        _saving = false;
-        _savingStep = "";
-      });
-    }
+  if (!mounted) return;
+
+  setState(() {
+    _saving = false;
+    _savingStep = "";
+  });
+}
+
 
     try {
       setStep("Preparando datos…");
+
+      final finishedAt = DateTime.now();
+final startedAt = workoutStartedAt ?? finishedAt;
+final duration = finishedAt.difference(startedAt);
+final durationMinutes =
+    (duration.inSeconds / 60).round();
+
+
 
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final now = DateTime.now();
@@ -1977,7 +2136,27 @@ String normalizeExerciseName(dynamic raw) {
 
         final exData = exSnap.docs.first.data();
         final muscleWeights = resolveMuscleWeights(exData);
-        final bool perSide = exData['perSide'] == true;
+        final blockIndex = int.parse(entry.key.split('-').first);
+
+final block = routine!['blocks'][blockIndex];
+
+final List<Map<String, dynamic>> blockExercises =
+    List<Map<String, dynamic>>.from(block['exercises'] as List);
+
+final Map<String, dynamic> blockExercise =
+    blockExercises.firstWhere(
+      (e) => normalizeExerciseName(e['name']) == exerciseName,
+      orElse: () => <String, dynamic>{},
+    );
+
+
+final bool perSide =
+    blockExercise['perSide'] ??
+    (exData['perSide'] == true);
+
+
+        
+
 
 
         for (final s in entry.value) {
@@ -2020,13 +2199,10 @@ if ((isTimeBased && seconds <= 0) || (!isTimeBased && reps <= 0)) continue;
        performed.add({
   'type': 'Series',
   'exercise': normalizeExerciseName(exData['name']),
-  'sets': entry.value.map((s) {
-    return {
-      ...s,
-      'perSide': perSide, // 👈 CLAVE
-    };
-  }).toList(),
+  'perSide': perSide, // 👈 GUARDADO GLOBAL
+  'sets': entry.value,
 });
+
 
 
       }
@@ -2097,6 +2273,7 @@ exercisesData.add({
                   reps: reps,
                   rpe: rpe.toDouble(),
                   weight: weight,
+                  perSide: ex['perSide'] == true,
                   muscleWeights: muscleWeights,
                   sourceType: 'Circuito',
                 ),
@@ -2180,28 +2357,35 @@ exercisesData.add({
       // ======================================================
       setStep("Guardando entrenamiento…");
 
-      DocumentReference workoutRef;
+      late DocumentReference workoutRef;
 
 if (isEdit) {
-  // ✏️ EDITAR ENTRENAMIENTO EXISTENTE
   workoutRef = widget.workoutRef!;
 
   await workoutRef.update({
     'performed': performed,
     'updatedAt': FieldValue.serverTimestamp(),
+    'startedAt': Timestamp.fromDate(startedAt),
+    'finishedAt': Timestamp.fromDate(finishedAt),
+    'durationMinutes': durationMinutes,
   });
+
 } else {
-  // 🆕 CREAR NUEVO ENTRENAMIENTO
   workoutRef = await FirebaseFirestore.instance
       .collection('workouts_logged')
       .add({
-        'userId': uid,
-        'routineId': routine!['id'],
-        'routineName': routine!['name'],
-        'date': Timestamp.fromDate(now),
-        'performed': performed,
-      });
+    'userId': uid,
+    'routineId': routine!['id'],
+    'routineName': routine!['name'],
+    'date': Timestamp.fromDate(now),
+    'startedAt': Timestamp.fromDate(startedAt),
+    'finishedAt': Timestamp.fromDate(finishedAt),
+    'durationMinutes': durationMinutes,
+    'performed': performed,
+  });
 }
+
+
 
 
       // ======================================================
@@ -2261,13 +2445,20 @@ if (isEdit) {
         'muscleLoad': {for (final e in muscleLoad.entries) e.key.name: e.value},
       });
 
+
       finish();
       Navigator.pop(context);
-    } catch (e) {
-      finish();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error al guardar: $e")));
-    }
+    } catch (e, stack) {
+  finish();
+
+  debugPrint("❌ ERROR AL GUARDAR:");
+  debugPrint(e.toString());
+  debugPrint(stack.toString());
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text("Error al guardar. Revisa consola.")),
+  );
+}
+
   }
 }

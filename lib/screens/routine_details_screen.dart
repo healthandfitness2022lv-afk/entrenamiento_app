@@ -5,7 +5,8 @@ import '../models/muscle_catalog.dart';
 import '../widgets/body_heatmap.dart';
 
 class RoutineDetailsScreen extends StatefulWidget {
-  final QueryDocumentSnapshot routine;
+  final DocumentSnapshot routine;
+
 
   const RoutineDetailsScreen({
     super.key,

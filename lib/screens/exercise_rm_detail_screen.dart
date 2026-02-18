@@ -169,7 +169,7 @@ final double rmPct =
       children: [
         Text("${reps}RM"),
         Text(
-          "${value.toStringAsFixed(1)} kg",
+          "${formatSmart(value)} kg",
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ],
@@ -381,13 +381,26 @@ Widget _simple(String label, int from, int to) {
 
       // 🔒 guardamos el mayor peso REAL observado para ese RM
       // (no el 1RM estimado)
-      if (!rm.containsKey(reps) || weight > rm[reps]!) {
-        rm[reps] = weight;
-      }
+      for (int r = 1; r <= reps; r++) {
+  if (!rm.containsKey(r) || weight > rm[r]!) {
+    rm[r] = weight;
+  }
+}
+
     }
   }
 
   return rm;
+}
+
+String formatSmart(double value) {
+  final rounded = double.parse(value.toStringAsFixed(1));
+
+  if (rounded % 1 == 0) {
+    return rounded.toInt().toString();
+  }
+
+  return rounded.toString();
 }
 
 
@@ -439,10 +452,14 @@ Widget _simple(String label, int from, int to) {
   final estimatedValues = <double>[];
 
   for (int reps = 1; reps <= 15; reps++) {
-    final est = estimated1RM / (1 + reps / 30);
-    estimatedSpots.add(FlSpot(reps.toDouble(), est));
-    estimatedValues.add(est);
-  }
+  final raw = estimated1RM / (1 + reps / 30);
+
+  final est = double.parse(raw.toStringAsFixed(1)); // 🔥 máximo 1 decimal real
+
+  estimatedSpots.add(FlSpot(reps.toDouble(), est));
+  estimatedValues.add(est);
+}
+
 
   final allValues = [...realValues, ...estimatedValues];
   final maxObserved = allValues.reduce((a, b) => a > b ? a : b);
@@ -492,11 +509,12 @@ Widget _simple(String label, int from, int to) {
               reservedSize: 40,
               interval: maxObserved / 4,
               getTitlesWidget: (v, _) {
-                return Text(
-                  v.toStringAsFixed(0),
-                  style: const TextStyle(fontSize: 10),
-                );
-              },
+  return Text(
+    formatSmart(v),
+    style: const TextStyle(fontSize: 10),
+  );
+},
+
             ),
           ),
         ),
@@ -645,7 +663,7 @@ Map<DateTime, List<Map<String, dynamic>>> _buildSessionSets() {
           title: Text("$reps RM"),
           trailing: real != null
               ? Text(
-                  "${real.toStringAsFixed(0)} kg",
+                  "${formatSmart(real)} kg",
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.green,

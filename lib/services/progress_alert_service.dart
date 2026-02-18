@@ -17,224 +17,303 @@ enum ProgressAlertType {
   rpeWithoutProgress,
   stagnation,
   heaviestSet,
+
+  // 🔥 NUEVOS
+  improvedEfficiency,
+  sessionVolumePR,
+  bestWeekEver,
 }
 
 class ProgressAlertService {
-  static List<ProgressAlert> analyze({
-    required Map<String, List<Map<String, dynamic>>> rmHistory,
-    required List<Map<String, dynamic>> weeklyVolume,
-  }) {
-    final List<ProgressAlert> alerts = [];
+
+
+static double _d(dynamic v) => (v as num?)?.toDouble() ?? 0.0;
+
+  
+  static List<ProgressAlert> analyzeSessionImpact({
+  required Map<String, List<Map<String, dynamic>>> rmHistory,
+  required DateTime targetDate,
+}) {
+  final List<ProgressAlert> alerts = [];
+
+  final DateTime todayKey =
+      DateTime(targetDate.year, targetDate.month, targetDate.day);
+
+  rmHistory.forEach((exercise, rawPoints) {
+    if (rawPoints.isEmpty) return;
+
+    final previousPoints = rawPoints.where((p) {
+      final d = p['date'] as DateTime;
+      final day = DateTime(d.year, d.month, d.day);
+      return day.isBefore(todayKey);
+    }).toList();
+
+    final todayPoints = rawPoints.where((p) {
+      final d = p['date'] as DateTime;
+      final day = DateTime(d.year, d.month, d.day);
+      return day == todayKey;
+    }).toList();
+
+    if (todayPoints.isEmpty) return;
+    if (previousPoints.isEmpty) return;
+
+
+    
 
     // ======================================================
-    // 🏆 PRs HISTÓRICOS + GRANDES PROGRESOS
-    // ======================================================
-    rmHistory.forEach((exercise, rawPoints) {
-      if (rawPoints.length < 2) return;
+// 1️⃣ NEW PR
+// ======================================================
 
-      // ---------- 1 RM máximo por día ----------
-      final Map<DateTime, Map<String, dynamic>> bestPerDay = {};
+final double previousBestRM = previousPoints.isNotEmpty
+    ? previousPoints
+        .map((p) => _d(p['rm']))
+        .reduce((a, b) => a > b ? a : b)
+    : 0;
 
-      for (final p in rawPoints) {
-        final DateTime d = p['date'];
-        final day = DateTime(d.year, d.month, d.day);
-        final double? rm = p['rm'];
+final double todayBestRM = todayPoints
+    .map((p) => _d(p['rm']))
+    .reduce((a, b) => a > b ? a : b);
 
-        if (rm == null) continue;
+if (todayBestRM > previousBestRM) {
+  final previousBestPoint = previousPoints.isNotEmpty
+      ? previousPoints.reduce((a, b) =>
+          _d(a['rm']) > (b['rm'] as double) ? a : b)
+      : null;
 
-        if (!bestPerDay.containsKey(day) ||
-            rm > (bestPerDay[day]!['rm'] as double)) {
-          bestPerDay[day] = {
-            'date': day,
-            'rm': rm,
-            'rpe': p['rpe'],
-            'weight': p['weight'],
-            'reps': p['reps'],
-          };
-        }
-      }
+  final todayBestPoint = todayPoints.reduce((a, b) =>
+      _d(a['rm']) > (b['rm'] as double) ? a : b);
 
-      final points = bestPerDay.values.toList()
-        ..sort((a, b) =>
-            (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+  final deltaPct = previousBestRM > 0
+      ? (todayBestRM - previousBestRM) / previousBestRM
+      : null;
 
-      double currentBest = 0;
-
-      for (int i = 0; i < points.length; i++) {
-        final p = points[i];
-
-        final double rm = p['rm'];
-        final DateTime date = p['date'];
-        final num? weight = p['weight'];
-        final num? reps = p['reps'];
-
-        final tonelaje =
-            (weight != null && reps != null) ? weight * reps : null;
-
-        if (rm > currentBest) {
-          final deltaPct =
-              currentBest > 0 ? (rm - currentBest) / currentBest : null;
-
-          // 🥇 GRAN PROGRESO
-          if (deltaPct != null && deltaPct >= 0.20) {
-            alerts.add(
-              ProgressAlert(
-                type: ProgressAlertType.newPR,
-                title: "Gran progreso en $exercise",
-                explanation:
-                    "Serie: ${weight ?? '-'} kg × ${reps ?? '-'} reps\n"
-                    "Tonelaje del set: ${tonelaje?.toStringAsFixed(0) ?? '-'} kg\n"
-                    "RM estimada: ${rm.toStringAsFixed(1)} kg "
-                    "(+${(deltaPct * 100).toStringAsFixed(0)}%).",
-                evidence: {
-                  'exercise': exercise,
-                  'weight': weight,
-                  'reps': reps,
-                  'tonnage': tonelaje,
-                  'currentRM': rm,
-                  'previousRM': currentBest,
-                  'deltaPct': deltaPct,
-                  'date': date,
-                },
-              ),
-            );
-          }
-          // 🏆 PR NORMAL
-          else {
-            alerts.add(
-              ProgressAlert(
-                type: ProgressAlertType.newPR,
-                title: "Nuevo PR en $exercise",
-                explanation:
-                    "Serie: ${weight ?? '-'} kg × ${reps ?? '-'} reps\n"
-                    "Tonelaje del set: ${tonelaje?.toStringAsFixed(0) ?? '-'} kg\n"
-                    "RM estimada: ${rm.toStringAsFixed(1)} kg.",
-                evidence: {
-                  'exercise': exercise,
-                  'weight': weight,
-                  'reps': reps,
-                  'tonnage': tonelaje,
-                  'currentRM': rm,
-                  'date': date,
-                },
-              ),
-            );
-          }
-
-          currentBest = rm;
-        }
-
-        // ======================================================
-        // ⚠️ RPE ↑ SIN RM ↑
-        // ======================================================
-        if (i > 0) {
-          final prev = points[i - 1];
-          final num? prevRpe = prev['rpe'];
-          final num? currRpe = p['rpe'];
-          final double prevRm = prev['rm'];
-
-          if (prevRpe != null &&
-              currRpe != null &&
-              currRpe > prevRpe &&
-              rm <= prevRm) {
-            alerts.add(
-              ProgressAlert(
-                type: ProgressAlertType.rpeWithoutProgress,
-                title: "Más esfuerzo sin mejora en $exercise",
-                explanation:
-                    "Serie: ${weight ?? '-'} kg × ${reps ?? '-'} reps\n"
-                    "RPE subió de $prevRpe a $currRpe, "
-                    "pero el RM se mantuvo (${prevRm.toStringAsFixed(1)} kg).",
-                evidence: {
-                  'exercise': exercise,
-                  'weight': weight,
-                  'reps': reps,
-                  'previousRM': prevRm,
-                  'currentRM': rm,
-                  'previousRPE': prevRpe,
-                  'currentRPE': currRpe,
-                  'date': date,
-                },
-              ),
-            );
-          }
-        }
-      }
-
-      // ======================================================
-      // 🏋️ SERIE MÁS PESADA HISTÓRICA
-      // ======================================================
-      final heaviest = rawPoints
-          .where((p) => p['weight'] != null && p['reps'] != null)
-          .fold<Map<String, dynamic>?>(null, (best, p) {
-        final w = p['weight'] as num?;
-        if (w == null) return best;
-
-        if (best == null || w > (best['weight'] as num)) {
-          return p;
-        }
-        return best;
-      });
-
-      if (heaviest != null) {
-        final ton = heaviest['weight'] * heaviest['reps'];
-
-        alerts.add(
-          ProgressAlert(
-            type: ProgressAlertType.heaviestSet,
-            title: "Serie más pesada en $exercise",
-            explanation:
-                "Serie: ${heaviest['weight']} kg × ${heaviest['reps']} reps\n"
-                "Tonelaje del set: ${ton.toStringAsFixed(0)} kg\n"
-                "RM estimada: ${(heaviest['rm'] as double).toStringAsFixed(1)} kg.",
-            evidence: {
-              'exercise': exercise,
-              'weight': heaviest['weight'],
-              'reps': heaviest['reps'],
-              'tonnage': ton,
-              'rm': heaviest['rm'],
-              'date': heaviest['date'],
-            },
-          ),
-        );
-      }
-    });
+  alerts.add(
+    ProgressAlert(
+      type: ProgressAlertType.newPR,
+      title: "Nuevo PR en $exercise",
+      explanation: "",
+      evidence: {
+        'exercise': exercise,
+        'previous': previousBestRM,
+        'current': todayBestRM,
+        'deltaPct': deltaPct,
+        'previousSet': previousBestPoint,
+        'currentSet': todayBestPoint,
+      },
+    ),
+  );
+}
 
     // ======================================================
-    // 📉 ESTANCAMIENTO DE VOLUMEN (3 SEMANAS)
+    // 2️⃣ IMPROVED EFFICIENCY
     // ======================================================
-    if (weeklyVolume.length >= 3) {
-      weeklyVolume.sort((a, b) =>
-          (a['week'] as DateTime).compareTo(b['week'] as DateTime));
 
-      final last3 = weeklyVolume.sublist(weeklyVolume.length - 3);
+    for (final todaySet in todayPoints) {
+      final weight = _d(todaySet['weight']);
+final rpe = _d(todaySet['rpe']);
 
-      final volumes = last3
-          .map((e) => e['volume'])
-          .whereType<num>()
-          .map((v) => v.toDouble())
+      final sameWeightHistory = previousPoints
+          .where((p) => p['weight'] == weight)
           .toList();
 
-      final maxV = volumes.reduce((a, b) => a > b ? a : b);
-      final minV = volumes.reduce((a, b) => a < b ? a : b);
+      if (sameWeightHistory.isEmpty) continue;
 
-      if ((maxV - minV) < (maxV * 0.05)) {
+      final bestPreviousRPE = sameWeightHistory
+          .map((p) => _d(p['rpe']))
+          .reduce((a, b) => a < b ? a : b);
+
+      if (rpe < bestPreviousRPE) {
+        final deltaPct = bestPreviousRPE > 0
+            ? (bestPreviousRPE - rpe) / bestPreviousRPE
+            : null;
+
         alerts.add(
           ProgressAlert(
-            type: ProgressAlertType.stagnation,
-            title: "Volumen estancado",
-            explanation:
-                "El volumen semanal se ha mantenido estable durante 3 semanas "
-                "(${volumes.map((v) => v.toStringAsFixed(0)).join(" → ")} kg).",
+            type: ProgressAlertType.improvedEfficiency,
+            title: "Mejor eficiencia en $exercise",
+            explanation: "",
             evidence: {
-              'weeks': last3.map((e) => e['week']).toList(),
-              'volumes': volumes,
+              'exercise': exercise,
+              'previous': bestPreviousRPE,
+              'current': rpe,
+              'deltaPct': deltaPct,
             },
           ),
         );
       }
     }
 
-    return alerts;
+    // ======================================================
+    // 3️⃣ HEAVIEST SET (por tonelaje)
+    // ======================================================
+
+    Map<String, dynamic>? previousBestSet;
+double previousMaxTonnage = 0;
+
+for (final p in previousPoints) {
+  final w = _d(p['weight']);
+final r = _d(p['reps']);
+
+  final ton = w * r;
+  if (ton > previousMaxTonnage) {
+    previousMaxTonnage = ton;
+    previousBestSet = p;
   }
 }
+
+Map<String, dynamic>? todayBestSet;
+double todayMaxTonnage = 0;
+
+for (final p in todayPoints) {
+  final w = p['weight'];
+  final r = p['reps'];
+  if (w != null && r != null) {
+    final ton = w * r;
+    if (ton > todayMaxTonnage) {
+      todayMaxTonnage = ton;
+      todayBestSet = p;
+    }
+  }
+}
+
+if (todayMaxTonnage > previousMaxTonnage) {
+  final deltaPct = previousMaxTonnage > 0
+      ? (todayMaxTonnage - previousMaxTonnage) /
+          previousMaxTonnage
+      : null;
+
+  alerts.add(
+    ProgressAlert(
+      type: ProgressAlertType.heaviestSet,
+      title: "Serie más pesada histórica en $exercise",
+      explanation: "",
+      evidence: {
+        'exercise': exercise,
+        'previous': previousMaxTonnage,
+        'current': todayMaxTonnage,
+        'deltaPct': deltaPct,
+        'previousSet': previousBestSet,
+        'currentSet': todayBestSet,
+      },
+    ),
+  );
+}
+
+    // ======================================================
+    // 4️⃣ SESSION VOLUME PR
+    // ======================================================
+
+   final Map<DateTime, List<Map<String, dynamic>>> previousSetsPerDay = {};
+
+for (final p in previousPoints) {
+  final DateTime d = p['date'];
+  final day = DateTime(d.year, d.month, d.day);
+
+  final w = p['weight'];
+  final r = p['reps'];
+
+  if (w != null && r != null) {
+    previousSetsPerDay.putIfAbsent(day, () => []);
+    previousSetsPerDay[day]!.add(p);
+  }
+}
+
+DateTime? previousBestDay;
+double previousBestVolume = 0;
+
+previousSetsPerDay.forEach((day, sets) {
+  final volume = sets.fold<double>(
+  0,
+  (sum, s) => sum + (_d(s['weight']) * _d(s['reps'])),
+)
+;
+
+  if (volume > previousBestVolume) {
+    previousBestVolume = volume;
+    previousBestDay = day;
+  }
+});
+
+double todayVolume = 0;
+final List<Map<String, dynamic>> todaySets = [];
+
+for (final p in todayPoints) {
+  final w = p['weight'];
+  final r = p['reps'];
+  if (w != null && r != null) {
+    todayVolume += w * r;
+    todaySets.add(p);
+  }
+}
+
+if (todayVolume > previousBestVolume) {
+  final deltaPct = previousBestVolume > 0
+      ? (todayVolume - previousBestVolume) /
+          previousBestVolume
+      : null;
+
+  alerts.add(
+    ProgressAlert(
+      type: ProgressAlertType.sessionVolumePR,
+      title: "Récord de volumen en $exercise",
+      explanation: "",
+      evidence: {
+        'exercise': exercise,
+        'previous': previousBestVolume,
+        'current': todayVolume,
+        'deltaPct': deltaPct,
+        'previousSets': previousBestDay != null
+            ? previousSetsPerDay[previousBestDay]
+            : [],
+        'currentSets': todaySets,
+      },
+    ),
+  );
+}
+
+
+  });
+
+  return alerts;
+}
+
+
+  static List<ProgressAlert> analyzeHistorical({
+  required Map<String, List<Map<String, dynamic>>> rmHistory,
+}) {
+  final List<ProgressAlert> alerts = [];
+
+  rmHistory.forEach((exercise, rawPoints) {
+    if (rawPoints.length < 2) return;
+
+    rawPoints.sort(
+        (a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+
+    double bestRM = 0;
+
+    for (final p in rawPoints) {
+      final rm = _d(p['rm']);
+      if (rm > bestRM) {
+        alerts.add(
+          ProgressAlert(
+            type: ProgressAlertType.newPR,
+            title: "Nuevo PR histórico en $exercise",
+            explanation:
+                "RM estimada: ${rm.toStringAsFixed(1)} kg.",
+            evidence: {
+              'exercise': exercise,
+              'date': p['date'],
+            },
+          ),
+        );
+        bestRM = rm;
+      }
+    }
+  });
+
+  return alerts;
+}
+
+}
+
+

@@ -29,8 +29,7 @@ class WorkoutSet {
   /// false = bilateral
   final bool perSide;
 
-  /// Músculos implicados con su peso relativo
-  /// Ej: { Muscle.quads: 1.0, Muscle.glutes: 0.5 }
+  
   final Map<Muscle, double> muscleWeights;
 
   /// Tipo de origen (Series / Circuito / Tabata)

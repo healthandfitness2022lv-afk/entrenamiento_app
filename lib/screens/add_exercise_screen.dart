@@ -216,9 +216,6 @@ void initState() {
   // 💾 SAVE
   // ======================================================
   Future<void> _saveExercise() async {
-  // ===============================
-  // 🔴 VALIDACIONES BÁSICAS
-  // ===============================
   if (nameController.text.trim().isEmpty ||
       instructionsController.text.trim().isEmpty ||
       selectedExerciseType == null) {
@@ -228,9 +225,6 @@ void initState() {
 
   final newName = nameController.text.trim();
 
-  // ===============================
-  // 🚫 VALIDACIÓN DE NOMBRE
-  // ===============================
   if (_hasInvalidCharacters(newName)) {
     _snack(
       "El nombre del ejercicio no puede contener '-' ni '/'.\n"
@@ -239,9 +233,6 @@ void initState() {
     return;
   }
 
-  // ===============================
-  // 🔥 VALIDACIÓN PONDERACIÓN MUSCULAR
-  // ===============================
   final totalWeight =
       muscleWeights.values.fold(0.0, (a, b) => a + b);
 
@@ -252,9 +243,6 @@ void initState() {
 
   final oldName = _originalName;
 
-  // ===============================
-  // 📦 DATA A GUARDAR
-  // ===============================
   final Map<String, dynamic> data = {
     'name': newName,
     'instructions': instructionsController.text.trim(),
@@ -271,35 +259,25 @@ void initState() {
   final collection =
       FirebaseFirestore.instance.collection('exercises');
 
-  // ===============================
-  // ✏️ EDITAR
-  // ===============================
   if (isEditMode && widget.exerciseId != null) {
     await collection.doc(widget.exerciseId).update(data);
 
-    // 🔁 PROPAGAR CAMBIO DE NOMBRE
     if (oldName != null && oldName != newName) {
       await _propagateExerciseRename(
         oldName: oldName,
         newName: newName,
       );
     }
-  }
-  // ===============================
-  // 🆕 CREAR
-  // ===============================
-  else {
+  } else {
     await collection.add({
       ...data,
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
 
-  // ===============================
-  // ✅ FIN
-  // ===============================
   Navigator.pop(context, true);
 }
+
 
 
 bool _hasInvalidCharacters(String name) {

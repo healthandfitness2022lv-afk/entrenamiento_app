@@ -97,21 +97,28 @@ class FatigueRecalculationStep {
   }
 }
 
-Muscle _decodeMuscle(String raw) {
-  switch (raw) {
-    // 🔥 MIGRACIÓN LEGACY
-    case 'rombs':
-      return Muscle.midBack; // o Muscle.traps, tú decides
+Muscle _decodeMuscle(String value) {
+  switch (value) {
+
+    // 🔥 Compatibilidad hacia atrás
+    case "traps":
+      return Muscle.trapsUpper;
+
+    // Nuevos
+    case "trapsUpper":
+      return Muscle.trapsUpper;
+
+    case "lowerTraps":
+      return Muscle.lowerTraps;
 
     default:
-  final matches = Muscle.values.where((m) => m.name == raw);
-  if (matches.isEmpty) {
-    throw Exception('Músculo desconocido: $raw');
-  }
-  return matches.first;
-
+      return Muscle.values.firstWhere(
+        (m) => m.name == value,
+        orElse: () => throw Exception("Músculo desconocido: $value"),
+      );
   }
 }
+
 
 /// ======================================================
 /// 🧠 SERVICIO DE RECÁLCULO

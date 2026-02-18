@@ -6,9 +6,11 @@ import 'exercises_screen.dart';
 import 'routines_screen.dart';
 import 'assign_routine_screen.dart';
 import 'log_workout_screen.dart';
+import 'planning_screen.dart';
 import 'my_workouts_screen.dart';
 import 'profile_screen.dart';
 import '../services/workout_volume_service.dart';
+
 
 
 class HomeScreen extends StatefulWidget {
@@ -135,9 +137,11 @@ final name = snapshot.data!['name']!;
     MaterialPageRoute(builder: (_) => const LogWorkoutScreen()),
   );
 
-  setState(() {
-    _statsFuture = _loadStats(); // 🔥 RECALCULA
-  });
+  if (!mounted) return;
+
+setState(() {
+  _statsFuture = _loadStats();
+});
 },
 
           ),
@@ -172,7 +176,7 @@ final name = snapshot.data!['name']!;
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    "Holaw, $name 👋",
+                                    "Hola, $name 👋",
                                     style: TextStyle(
                                       fontSize: 25,
                                       fontWeight: FontWeight.bold,
@@ -188,17 +192,18 @@ final name = snapshot.data!['name']!;
   icon: const Icon(Icons.person_outline,
       color: Colors.white, size: 30),
   onPressed: () async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const ProfileScreen(),
-      ),
-    );
+  await Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const ProfileScreen()),
+  );
 
-    setState(() {
-      _statsFuture = _loadStats(); // 🔥 FATIGA RECALCULADA
-    });
-  },
+  if (!mounted) return;
+
+  setState(() {
+    _statsFuture = _loadStats();
+  });
+},
+
 ),
 
                           ],
@@ -289,6 +294,21 @@ final name = snapshot.data!['name']!;
                                     MaterialPageRoute(
                                       builder: (_) =>
                                           const ExercisesScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+
+                              _HomeCard(
+                                icon: Icons.fitness_center,
+                                title: "Planificación",
+                                subtitle: "Planifica tus entrenamientos",
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const PlanningScreen(),
                                     ),
                                   );
                                 },

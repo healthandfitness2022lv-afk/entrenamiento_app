@@ -1,19 +1,42 @@
 const List<String> muscleCatalog = [
+  // Tren inferior
   "Cuádriceps",
   "Isquiotibiales",
   "Glúteos",
+  "Aductores",
+  "Pantorrillas",
+
+  // Pecho
   "Pectorales",
-  "Dorsales",
+  "Pectoral superior",
+
+  // Hombros
+  "Deltoides anterior",
+  "Deltoides medial",
+  "Deltoide posterior",
+
+  // Brazos
   "Bíceps",
   "Tríceps",
-  "Hombros",
+  "Antebrazos",
+
+  // Espalda
+  "Dorsales",
+  "Redondo",
+  "Romboides",
+  "Trapecio superior",
+  "Trapecio inferior",
+  "Lumbares",
+
+  // Core
   "Abdominales",
   "Oblícuos",
-  "Lumbares",
-  "Manguito rotador",
-  "Pantorrillas",
-  "Antebrazos",
+  "Flexores de cadera",
+
+  // Estabilizadores
+  "Serrato anterior",
 ];
+
 
 const List<String> equipmentCatalog = [
   "Peso corporal",
@@ -37,9 +60,8 @@ const List<String> exerciseTypeCatalog = [
   "Hipertrofia",
   "Potencia",
   "weightlifting",
-  "Cardio",
   "Metabólico",
-  "Técnica",
+  "Cardio",
   "Movilidad",
   "Pliometría",
   "Isometría",
@@ -48,16 +70,15 @@ const List<String> exerciseTypeCatalog = [
 
 const Map<String, double> exerciseTypeFactor = {
   "Fuerza": 1.3,
-  "weightlifting": 1.25,
-  "Hipertrofia": 1.1,
+  "weightlifting": 1.2,
+  "Hipertrofia": 1.05,
   "Potencia": 0.95,
-  "Pliometría": 0.7,
-  "Metabólico": 1.0,
-  "Cardio": 0.5,
+  "Pliometría": 0.75,
+  "Metabólico": 0.9,
   "Calistenia": 1.0,
-  "Isometría": 0.6,
-  "Técnica": 0.4,
+  "Isometría": 0.7,
   "Movilidad": 0.35,
+  "Cardio": 0.4,
 };
 
 double exerciseTypeFactorOf(String? type) {

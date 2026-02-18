@@ -479,9 +479,9 @@ if (editingExerciseIndex != null)
       exerciseName = data["name"];
 
       valueType = "reps";
-      perSide = false;
+      perSide = data["perSide"] == true; // ✅ FIX REAL
       weightNA = false;
-      weightCtrl.text = "0";
+      weightCtrl.text = "1";
       repsCtrl.clear();
 
       availableEquipment =

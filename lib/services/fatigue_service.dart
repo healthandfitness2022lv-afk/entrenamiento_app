@@ -1,7 +1,7 @@
 // lib/services/fatigue_service.dart
 import 'dart:math' as math;
 /// 0.70 = recupera 30% diario
-const double dailyRecoveryFactor = 0.7;
+const double dailyRecoveryFactor = 0.72;
 
 
 const double recoveryStimulus = 0.0;

@@ -2,11 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../utils/svg_utils.dart';
-import 'package:fl_chart/fl_chart.dart';
 import '../models/muscle_catalog.dart';
 import '../widgets/body_heatmap.dart';
 import 'my_workouts_screen.dart';
+import 'fatigue_audit_screen.dart';
+
 import '../services/fatigue_recalculation_service.dart';
+
+enum MuscleViewMode { muscle, anatomical, functional }
+
+MuscleViewMode fatigueViewMode = MuscleViewMode.muscle;
+
+
+
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -30,196 +38,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Set<Muscle> chartMuscles = {};
 
   DateTimeRange? chartRange;
-
-  List<FatigueRecalculationStep> _filterStepsByRange(
-    List<FatigueRecalculationStep> steps,
-  ) {
-    final now = DateTime.now();
-
-    final from = chartRange?.start ?? now.subtract(const Duration(days: 30));
-    final to = chartRange?.end ?? now;
-
-    return steps
-    .where((s) =>
-        !s.workoutDate.isBefore(from) &&
-        !s.workoutDate.isAfter(to))
-    .toList();
-
-  }
-
-  Widget _auditFatigueChart(List<FatigueRecalculationStep> steps) {
-    final filtered = _filterStepsByRange(steps);
-
-    if (filtered.length < 2) {
-      return const Text(
-        "No hay datos suficientes para graficar",
-        style: TextStyle(color: Colors.grey),
-      );
-    }
-
-    final series = <Muscle, List<FlSpot>>{};
-
-    for (final m in chartMuscles) {
-      series[m] = [];
-    }
-
-    for (int i = 0; i < filtered.length; i++) {
-      final step = filtered[i];
-      for (final m in chartMuscles) {
-        final v = step.fatigueAfter[m];
-        if (v != null) {
-          series[m]!.add(FlSpot(i.toDouble(), v));
-        }
-      }
-    }
-
-    final globalSeries = <FlSpot>[];
-
-    for (int i = 0; i < filtered.length; i++) {
-      final g = _globalFatigueFromStep(filtered[i]);
-      globalSeries.add(FlSpot(i.toDouble(), g));
-    }
-
-    return SizedBox(
-      height: 260,
-      child: LineChart(
-        LineChartData(
-          
-          minY: 0,
-          maxY: 100,
-          gridData: FlGridData(show: true),
-          titlesData: FlTitlesData(
-  // ⬅️ IZQUIERDA: SE MANTIENE
-  leftTitles: AxisTitles(
-    sideTitles: SideTitles(
-      showTitles: true,
-      interval: 20,
-      reservedSize: 36,
-      getTitlesWidget: (value, _) {
-        return Text(
-          value.toInt().toString(),
-          style: const TextStyle(fontSize: 10),
-        );
-      },
-    ),
-  ),
-
-  // ➡️ DERECHA: SE ELIMINA
-  rightTitles: AxisTitles(
-    sideTitles: SideTitles(showTitles: false),
-  ),
-
-  // ⬆️ ARRIBA: SE ELIMINA
-  topTitles: AxisTitles(
-    sideTitles: SideTitles(showTitles: false),
-  ),
-
-  // ⬇️ ABAJO: SE MANTIENE
-  bottomTitles: AxisTitles(
-    sideTitles: SideTitles(
-      showTitles: true,
-      interval: (filtered.length / 4).ceilToDouble(),
-      getTitlesWidget: (value, _) {
-        final i = value.toInt();
-        if (i < 0 || i >= filtered.length) {
-          return const SizedBox.shrink();
-        }
-        final d = filtered[i].workoutDate;
-        return Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            "${d.day}/${d.month}",
-            style: const TextStyle(fontSize: 10),
-          ),
-        );
-      },
-    ),
-  ),
-),lineTouchData: LineTouchData(
-  handleBuiltInTouches: true,
-  touchTooltipData: LineTouchTooltipData(
-    getTooltipColor: (_) => Colors.white,
-    tooltipRoundedRadius: 8,
-    tooltipPadding: const EdgeInsets.all(8),
-    getTooltipItems: (touchedSpots) {
-  if (touchedSpots.isEmpty) return [];
-
-  final i = touchedSpots.first.x.round();
-  final date = (i >= 0 && i < filtered.length)
-      ? filtered[i].workoutDate
-      : null;
-
-  final fechaTxt = date == null
-      ? ""
-      : "${date.day.toString().padLeft(2, '0')}/"
-        "${date.month.toString().padLeft(2, '0')}/"
-        "${date.year}";
-
-  return touchedSpots.asMap().entries.map((entry) {
-    final idx = entry.key;
-    final spot = entry.value;
-    final barIndex = spot.barIndex;
-
-    // 🔥 PROMEDIO GLOBAL
-    if (showGlobalFatigue && barIndex == series.length) {
-      return LineTooltipItem(
-        "${idx == 0 ? "$fechaTxt\n" : ""}"
-        "Promedio global\n"
-        "${spot.y.toStringAsFixed(2)}%",
-        const TextStyle(
-          color: Colors.black,
-          fontWeight: FontWeight.bold,
-        ),
-      );
-    }
-
-    // 🔹 MÚSCULO
-    final muscle = chartMuscles.elementAt(barIndex);
-
-    return LineTooltipItem(
-      "${idx == 0 ? "$fechaTxt\n" : ""}"
-      "${muscle.label}\n"
-      "${spot.y.toStringAsFixed(2)}%",
-      TextStyle(
-        color: heatmapColor(spot.y),
-        fontWeight: FontWeight.bold,
-      ),
-    );
-  }).toList();
-},
-
-  ),
-),
-
-
-          lineBarsData: [
-  // 🔹 series por músculo
-  ...series.entries.map((e) {
-    return LineChartBarData(
-      spots: e.value,
-      isCurved: true,
-      barWidth: 2,
-      color: heatmapColor(40 + e.key.index * 5),
-      dotData: FlDotData(show: false),
-    );
-  }),
-
-  // 🔥 PROMEDIO GLOBAL (OPCIONAL)
-  if (showGlobalFatigue)
-    LineChartBarData(
-      spots: globalSeries,
-      isCurved: true,
-      barWidth: 3,
-      color: Colors.black,
-      dashArray: [6, 4],
-      dotData: FlDotData(show: false),
-    ),
-],
-
-        ),
-      ),
-    );
-  }
 
   @override
   void initState() {
@@ -432,107 +250,206 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _allMusclesList() {
-    if (heatmap.isEmpty) {
-      return const Text(
-        "Sin datos de fatiga",
-        style: TextStyle(color: Colors.grey),
-      );
-    }
-
-    final entries = heatmap.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Fatiga por músculo",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-
-        // 📋 LISTA DE MÚSCULOS
-        for (final e in entries)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: heatmapColor(e.value),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 8),
-
-                Expanded(
-                  child: Text(
-                    e.key.label,
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                ),
-
-                Text(
-                  e.value.toStringAsFixed(1),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-        const SizedBox(height: 16),
-        const Divider(),
-
-        // 🎨 ESCALA DE COLORES
-        Wrap(spacing: 10, runSpacing: 6, children: _heatmapLegendRowsCompact()),
-      ],
+  if (heatmap.isEmpty) {
+    return const Text(
+      "Sin datos de fatiga",
+      style: TextStyle(color: Colors.grey),
     );
   }
 
-  List<Widget> _heatmapLegendRowsCompact() {
-    return [
-      _legendCompact(3, "Muy baja", "<5"),
-      _legendCompact(10, "Baja", "5–17"),
-      _legendCompact(24, "Media", "18–29"),
-      _legendCompact(38, "M-alta", "30–47"),
-      _legendCompact(52, "Alta", "48–55"),
-      _legendCompact(65, "Muy alta", ">55"),
-    ];
-  }
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text(
+        "Fatiga",
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
 
-  double _globalFatigueFromStep(FatigueRecalculationStep step) {
-    final values = step.fatigueAfter.values.where((v) => v >= 5).toList();
-    if (values.isEmpty) return 0;
+      const SizedBox(height: 12),
 
-    values.sort((a, b) => b.compareTo(a));
-    final top = values.take(5).toList();
+      /// 🔘 TABS
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          ChoiceChip(
+            label: const Text("Músculo"),
+            selected: fatigueViewMode == MuscleViewMode.muscle,
+            onSelected: (_) {
+              setState(() {
+                fatigueViewMode = MuscleViewMode.muscle;
+              });
+            },
+          ),
+          const SizedBox(width: 8),
+          ChoiceChip(
+            label: const Text("Grupo"),
+            selected: fatigueViewMode == MuscleViewMode.anatomical,
+            onSelected: (_) {
+              setState(() {
+                fatigueViewMode = MuscleViewMode.anatomical;
+              });
+            },
+          ),
+          const SizedBox(width: 8),
+          ChoiceChip(
+            label: const Text("Funcional"),
+            selected: fatigueViewMode == MuscleViewMode.functional,
+            onSelected: (_) {
+              setState(() {
+                fatigueViewMode = MuscleViewMode.functional;
+              });
+            },
+          ),
+        ],
+      ),
 
-    return (top.reduce((a, b) => a + b) / top.length).clamp(0, 100);
-  }
+      const SizedBox(height: 16),
 
-  Widget _legendCompact(double value, String label, String range) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+      if (fatigueViewMode == MuscleViewMode.muscle)
+        _buildMuscleView(),
+
+      if (fatigueViewMode == MuscleViewMode.anatomical)
+        _buildGroupView(
+  anatomicalGroups,
+  (g) => g.label,
+),
+
+      if (fatigueViewMode == MuscleViewMode.functional)
+        _buildGroupView(
+  functionalGroups,
+  (g) => g.label,
+),
+
+      const SizedBox(height: 16),
+      const Divider(),
+      _heatmapLegendBar(),
+    ],
+  );
+}
+
+Widget _buildMuscleView() {
+  final entries = heatmap.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+
+  return Column(
+    children: entries.map((e) {
+      return _fatigueRow(e.key.label, e.value);
+    }).toList(),
+  );
+}
+
+
+Widget _buildGroupView<T>(
+  Map<T, List<Muscle>> groups,
+  String Function(T) labelGetter,
+)
+ {
+  final results = <MapEntry<String, double>>[];
+
+for (final entry in groups.entries) {
+  final muscles = entry.value;
+
+  final values = muscles
+      .map((m) => heatmap[m] ?? 0)
+      .where((v) => v > 10)
+      .toList();
+
+  if (values.isEmpty) continue;
+
+  final avg = values.reduce((a, b) => a + b) / values.length;
+
+  results.add(MapEntry(labelGetter(entry.key), avg));
+}
+
+results.sort((a, b) => b.value.compareTo(a.value));
+
+return Column(
+  children: results.map((e) {
+    return _fatigueRow(e.key, e.value);
+  }).toList(),
+);
+
+}
+
+Widget _fatigueRow(String label, double value) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
       children: [
         Container(
-          width: 12,
-          height: 12,
+          width: 10,
+          height: 10,
           decoration: BoxDecoration(
             color: heatmapColor(value),
             borderRadius: BorderRadius.circular(2),
           ),
         ),
-        const SizedBox(height: 2),
-        Text(label, style: const TextStyle(fontSize: 10)),
-        Text(range, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+        const SizedBox(width: 8),
+
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13),
+          ),
+        ),
+
+        Text(
+          value.toStringAsFixed(1),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ],
-    );
-  }
+    ),
+  );
+}
+
+
+  Widget _heatmapLegendBar() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: 12),
+      const Text(
+        "Escala de fatiga (0–100)",
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+      const SizedBox(height: 6),
+      Container(
+        height: 14,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          gradient: const LinearGradient(
+  stops: [0.0, 0.04, 0.28, 0.52, 0.76, 0.95, 1.0],
+  colors: [
+    Colors.transparent,          // 0–4
+    const Color(0xFF4FC3F7),     // Celeste
+    const Color(0xFF1565C0),     // Azul
+    const Color(0xFF7B1FA2),     // Morado
+    const Color(0xFFFF8F00),     // Naranjo
+    const Color(0xFFB71C1C),     // Rojo intenso
+    const Color(0xFFB71C1C),     // Rojo sólido 95–100
+  ],
+)
+
+
+
+
+        ),
+      ),
+      const SizedBox(height: 4),
+      const Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text("0", style: TextStyle(fontSize: 10)),
+          Text("50", style: TextStyle(fontSize: 10)),
+          Text("100", style: TextStyle(fontSize: 10)),
+        ],
+      )
+    ],
+  );
+}
 
   // ======================================================
   // 📊 RESUMEN GENERAL
@@ -546,11 +463,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ? "Carga moderada"
         : "Alta carga";
 
-    final color = avgFatigue < 25
-        ? Colors.green
-        : avgFatigue < 55
-        ? Colors.orange
-        : Colors.red;
+    final color = heatmapColor(avgFatigue);
 
     return Card(
       child: Padding(
@@ -624,16 +537,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: SizedBox.expand(
               // 🔥 CLAVE
               child: BodyHeatmap(
-                key: ValueKey(_heatmapSignature(heatmap)),
-                heatmap: heatmap,
-                showBack: showBack,
-              ),
+  key: ValueKey(_heatmapSignature(_getDisplayHeatmap())),
+  heatmap: _getDisplayHeatmap(),
+  showBack: showBack,
+),
+
             ),
           ),
         ),
       ],
     );
   }
+
+
+  Map<Muscle, double> _getDisplayHeatmap() {
+  if (fatigueViewMode == MuscleViewMode.muscle) {
+    return heatmap;
+  }
+
+  final Map<Muscle, double> groupedHeatmap = {};
+
+  final groups = fatigueViewMode == MuscleViewMode.anatomical
+      ? anatomicalGroups
+      : functionalGroups;
+
+  for (final entry in groups.entries) {
+    final muscles = entry.value;
+
+    final values = muscles
+        .map((m) => heatmap[m] ?? 0)
+        .where((v) => v > 10)
+        .toList();
+
+    if (values.isEmpty) continue;
+
+    final avg =
+        values.reduce((a, b) => a + b) / values.length;
+
+    for (final m in muscles) {
+      groupedHeatmap[m] = avg;
+    }
+  }
+
+  return groupedHeatmap;
+}
+
 
   // ======================================================
   // ⚡ ACCIONES
@@ -658,146 +606,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ],
     );
   }
-
-  Widget _auditMuscleSelectorModal(
-    void Function(void Function()) setModalState,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 6,
-          children: Muscle.values.map((m) {
-            final selected = pendingChartMuscles.contains(m);
-
-            return FilterChip(
-              label: Text(m.label, style: const TextStyle(fontSize: 11)),
-              selected: selected,
-              onSelected: (v) {
-                setModalState(() {
-                  v
-                      ? pendingChartMuscles.add(m)
-                      : pendingChartMuscles.remove(m);
-                  hasPendingChanges = true;
-                });
-              },
-            );
-          }).toList(),
-        ),
-
-        if (hasPendingChanges)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: ElevatedButton.icon(
-              onPressed: () {
-                setModalState(() {
-                  chartMuscles = {...pendingChartMuscles};
-                  hasPendingChanges = false;
-                });
-              },
-              icon: const Icon(Icons.check),
-              label: const Text("Aplicar"),
-            ),
-          ),
-      ],
-    );
-  }
-
   void _showAudit(List<FatigueRecalculationStep> steps) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return DraggableScrollableSheet(
-              expand: false,
-              initialChildSize: 0.85,
-              maxChildSize: 0.95,
-              minChildSize: 0.4,
-              builder: (_, controller) {
-                return SingleChildScrollView(
-                  controller: controller,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "Evolución de fatiga",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-
-                        Row(
-                          children: [
-                            TextButton.icon(
-                              onPressed: () async {
-                                final now = DateTime.now();
-
-                                final range = await showDateRangePicker(
-                                  context: context,
-                                  firstDate: now.subtract(
-                                    const Duration(days: 365),
-                                  ),
-                                  lastDate: now,
-                                  initialDateRange:
-                                      chartRange ??
-                                      DateTimeRange(
-                                        start: now.subtract(
-                                          const Duration(days: 30),
-                                        ),
-                                        end: now,
-                                      ),
-                                );
-
-                                if (range != null) {
-                                  setModalState(() {
-                                    chartRange = range;
-                                  });
-                                }
-                              },
-                              icon: const Icon(Icons.date_range),
-                              label: const Text("Rango"),
-                            ),
-                            const Spacer(),
-                            Text(
-                              chartRange == null
-                                  ? "Últimos 30 días"
-                                  : "${chartRange!.start.day}/${chartRange!.start.month} - "
-                                        "${chartRange!.end.day}/${chartRange!.end.month}",
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                              ),
-                            ),Switch(
-      value: showGlobalFatigue,
-      onChanged: (v) {
-        setModalState(() {
-          showGlobalFatigue = v;
-        });
-      },
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => FatigueAuditScreen(steps: steps),
     ),
-    const Text("promedio"),
-                          ],
-                        ),
-
-                        _auditFatigueChart(steps),
-
-                        const SizedBox(height: 8),
-
-                        _auditMuscleSelectorModal(setModalState),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
-    );
-  }
+  );
+}
 }

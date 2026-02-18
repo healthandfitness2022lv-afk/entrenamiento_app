@@ -9,14 +9,18 @@ class BodyHeatmap extends StatefulWidget {
   final bool showBack;
   final Color? overrideColor;
   final bool percentageScale; // 👈 NUEVO
+  final double opacityMultiplier;
+
 
   const BodyHeatmap({
-    super.key,
-    required this.heatmap,
-    this.showBack = false,
-    this.overrideColor,
-    this.percentageScale = false, // 👈 default seguro
-  });
+  super.key,
+  required this.heatmap,
+  this.showBack = false,
+  this.overrideColor,
+  this.percentageScale = false,
+  this.opacityMultiplier = 1.0, // 👈 NUEVO
+});
+
 
   @override
   State<BodyHeatmap> createState() => _BodyHeatmapState();
@@ -78,11 +82,12 @@ void didUpdateWidget(covariant BodyHeatmap oldWidget) {
     final rawSvg = await rootBundle.loadString(path);
 
     final coloredSvg = buildColoredSvg(
-      rawSvg,
-      widget.heatmap,
-      overrideColor: widget.overrideColor,
-      percentageScale: widget.percentageScale, // 👈 PASAMOS EL FLAG
-    );
+  rawSvg,
+  widget.heatmap,
+  overrideColor: widget.overrideColor,
+  opacityMultiplier: widget.opacityMultiplier, // 👈 NUEVO
+);
+
 
     _svgCache[key] = coloredSvg;
 
@@ -91,22 +96,29 @@ void didUpdateWidget(covariant BodyHeatmap oldWidget) {
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_svgData == null) {
-      return const Center(
-        child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      );
-    }
-
-    return RepaintBoundary(
-      child: SvgPicture.string(
-        _svgData!,
-        fit: BoxFit.contain,
+Widget build(BuildContext context) {
+  if (_svgData == null) {
+    return const Center(
+      child: SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
       ),
     );
   }
+
+  return RepaintBoundary(
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        return SvgPicture.string(
+          _svgData!,
+          width: constraints.maxWidth,
+          height: constraints.maxHeight,
+          fit: BoxFit.contain,
+        );
+      },
+    ),
+  );
+}
+
 }

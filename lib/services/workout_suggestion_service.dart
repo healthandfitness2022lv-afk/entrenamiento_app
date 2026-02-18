@@ -1,6 +1,51 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class WorkoutSuggestionService {
+
+  static Future<int?> suggestMaxRepsForWeight({
+  required String userId,
+  required String exercise,
+  required double targetWeight,
+  double tolerance = 0.5, // margen por decimales
+}) async {
+  final snap = await FirebaseFirestore.instance
+      .collection('workouts_logged')
+      .where('userId', isEqualTo: userId)
+      .get();
+
+  int? maxReps;
+
+  for (final doc in snap.docs) {
+    final performed = List<Map<String, dynamic>>.from(doc['performed']);
+
+    for (final e in performed) {
+      if (e['type'] != 'Series') continue;
+      if (e['exercise'] != exercise) continue;
+
+      final sets = List<Map<String, dynamic>>.from(e['sets']);
+
+      for (final s in sets) {
+        if (s['done'] != true) continue;
+
+        final weight = (s['weight'] as num?)?.toDouble();
+        final reps = (s['reps'] as num?)?.toInt();
+
+        if (weight == null || reps == null) continue;
+
+        // comparación con tolerancia
+        if ((weight - targetWeight).abs() <= tolerance) {
+          if (maxReps == null || reps > maxReps) {
+            maxReps = reps;
+          }
+        }
+      }
+    }
+  }
+
+  return maxReps;
+}
+
+
   static Future<double?> suggestWeightForReps({
     required String userId,
     required String exercise,

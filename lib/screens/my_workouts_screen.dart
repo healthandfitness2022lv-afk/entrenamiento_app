@@ -112,7 +112,9 @@ Widget _seriesExerciseRow(Map<String, dynamic> p) {
 
   if (sets.isEmpty) return const SizedBox();
 
-  final bool perSide = sets.any((s) => s['perSide'] == true);
+  final bool perSide =
+    (p['perSide'] == true) || sets.any((s) => s['perSide'] == true);
+
 
   final int sideMultiplier = perSide ? 2 : 1;
 
@@ -189,7 +191,7 @@ final double weight = _parseDouble(e['weight']);
     roundTotal += reps * weight * (perSide ? 2 : 1);
   }
 
-  final String sideLabel = anyPerSide ? " · incluye trabajo por lado ×2" : "";
+  final String sideLabel = anyPerSide ? "" : "";
 
   return Padding(
     padding: const EdgeInsets.only(bottom: 6),

@@ -258,11 +258,13 @@ acc[e.key] =
   static double structureFactor(String sourceType) {
     switch (sourceType) {
       case 'Circuito':
-        return 1.0;
+        return 1.2;
       case 'Tabata':
         return 2.5;
       default:
-        return 1.0;
+        return 1;
     }
   }
 }
+
+
