@@ -9,11 +9,10 @@ double rpeFactor(double rpe) {
   5: 0.65,
   6: 0.9,
   7: 1.0,
-  8: 1.12,
+  8: 1.1,
   9: 1.23,
-  10: 1.3,
+  10: 1.34,
 };
-
 
   return factors[key]!;
 }

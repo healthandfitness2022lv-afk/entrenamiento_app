@@ -241,7 +241,7 @@ final totalPercent =
                                           value: raw,
                                           min: 0,
                                           max: 1,
-                                          divisions: 100,
+                                          divisions: 20,
                                           onChanged: (v) {
                                             dialogSetState(() {
                                               final nv = v.clamp(0.0, 1.0);

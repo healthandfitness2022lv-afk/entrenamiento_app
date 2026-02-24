@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'add_routine_screen.dart';
 import '../models/muscle_catalog.dart';
 import '../widgets/body_heatmap.dart';
+import '../widgets/routine_view.dart';
 
 class RoutineDetailsScreen extends StatefulWidget {
   final DocumentSnapshot routine;
@@ -65,13 +66,11 @@ class _RoutineDetailsScreenState extends State<RoutineDetailsScreen> {
                   _muscleImpactSection(context, muscleHeatmap),
                   const SizedBox(height: 32),
                 ],
-                ...blocks.asMap().entries.map(
-                      (e) => _blockCard(
-                        context,
-                        e.value,
-                        e.key,
-                      ),
-                    ),
+                RoutineView(
+  routine: routineData!,
+  compact: false,
+),
+
               ],
             ),
 
@@ -186,139 +185,6 @@ class _RoutineDetailsScreenState extends State<RoutineDetailsScreen> {
   }
 
   // =====================================================
-  // BLOQUES
-  // =====================================================
-
-  Widget _blockCard(
-    BuildContext context,
-    Map<String, dynamic> block,
-    int index,
-  ) {
-    final type = block['type'];
-    final exercises =
-        List<Map<String, dynamic>>.from(block['exercises']);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                _blockIcon(type),
-                color: Theme.of(context).colorScheme.primary,
-                size: 22,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _blockTitle(block),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: _exerciseContainer(context),
-            child: Column(
-              children:
-                  exercises.map((e) => _exerciseRow(e)).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _blockTitle(Map<String, dynamic> block) {
-    switch (block['type']) {
-      case "Series":
-        return "Series";
-      case "Circuito":
-        return "Circuito · ${block['rounds']} rondas";
-      case "EMOM":
-        return "EMOM · ${block['time']}s · ${block['rounds']} rondas";
-      case "Tabata":
-        return "Tabata ${block['work']}/${block['rest']} · ${block['rounds']} rondas";
-      default:
-        return block['type'];
-    }
-  }
-
-  IconData _blockIcon(String type) {
-    switch (type) {
-      case "Series":
-        return Icons.fitness_center;
-      case "Circuito":
-        return Icons.loop;
-      case "EMOM":
-        return Icons.timer;
-      case "Tabata":
-        return Icons.flash_on;
-      default:
-        return Icons.category;
-    }
-  }
-
-  Widget _exerciseRow(Map<String, dynamic> e) {
-  final bool perSide = e['perSide'] == true;
-  final num weight = (e['weight'] ?? 0);
-
-  String mainValue = "";
-
-  // 🔥 SOLO PARA SERIES
-  if (e['series'] != null && e['reps'] != null) {
-    mainValue = "${e['series']}×${e['reps']} reps";
-  }
-
-  // 🔥 CIRCUITOS / EMOM / TABATA
-  else if (e['value'] != null && e['valueType'] != null) {
-    mainValue = e['valueType'] == "time"
-        ? "${e['value']} s"
-        : "${e['value']} reps";
-  }
-
-  final String sideLabel = perSide ? " · por lado" : "";
-  final String weightLabel = " · ${weight}kg";
-
-  final String rightText =
-      [mainValue, sideLabel, weightLabel]
-          .where((s) => s.isNotEmpty)
-          .join("");
-
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
-    child: Row(
-      children: [
-        const Icon(Icons.play_arrow, size: 16, color: Colors.grey),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            e['name'],
-            style: const TextStyle(fontSize: 14),
-          ),
-        ),
-        Text(
-          rightText,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.grey,
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-
-  // =====================================================
   // HEATMAP UTILS
   // =====================================================
 
@@ -383,19 +249,4 @@ class _RoutineDetailsScreenState extends State<RoutineDetailsScreen> {
     );
   }
 
-  BoxDecoration _exerciseContainer(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    return BoxDecoration(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: primary, width: 1.3),
-      boxShadow: [
-        BoxShadow(
-          color: primary.withOpacity(0.18),
-          blurRadius: 14,
-          spreadRadius: 1,
-        ),
-      ],
-    );
-  }
 }

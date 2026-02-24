@@ -174,31 +174,37 @@ class FatigueRecalculationService {
       };
 
       // =========================
-      // 🏋️ CARGA
-      // =========================
-      Map<Muscle, double> load;
+// 🏋️ CARGA (robusta)
+// =========================
+Map<Muscle, double> load = {};
 
-      final hasStoredLoad = data['muscleLoad'] != null;
+// 1) Si ya existe muscleLoad en el workout y NO quieres recalcular, úsalo
+final raw = data['muscleLoad'];
 
-      if (hasStoredLoad && !forceRecalculateLoad) {
-        final rawLoad = Map<String, dynamic>.from(data['muscleLoad']);
-        load = {
-  for (final e in rawLoad.entries)
-    _decodeMuscle(e.key): (e.value as num).toDouble(),
-};
+Map<Muscle, double> _decodeLoad(dynamic rawMap) {
+  if (rawMap is! Map) return {};
+  final m = Map<String, dynamic>.from(rawMap);
+  final out = <Muscle, double>{};
 
-      } else {
-        load = await WorkoutLoadService.calculateLoadFromWorkout(data);
+  for (final e in m.entries) {
+    final key = e.key;
+    final matches = Muscle.values.where((x) => x.name == key);
+    if (matches.isEmpty) continue;
+    out[matches.first] = (e.value as num).toDouble();
+  }
+  return out;
+}
 
-        await FirebaseFirestore.instance
-            .collection('workouts_logged')
-            .doc(doc.id)
-            .update({
-          'muscleLoad': {
-            for (final e in load.entries) e.key.name: e.value,
-          }
-        });
-      }
+if (!forceRecalculateLoad && raw != null) {
+  load = _decodeLoad(raw);
+} else {
+  // 2) Si falta muscleLoad, intenta calcularlo; si falla, queda vacío
+  try {
+    load = await WorkoutLoadService.calculateLoadFromWorkout(data);
+  } catch (_) {
+    load = {}; // 👈 CLAVE: igual habrá step y aparecerá en audit
+  }
+}
 
       // =========================
       // 🔥 APLICAR CARGA

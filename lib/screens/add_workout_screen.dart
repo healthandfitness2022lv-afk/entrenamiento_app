@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
+
 
 class AddWorkoutScreen extends StatefulWidget {
   final Map<String, dynamic>? initialBlock;
@@ -22,6 +24,7 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   final restCtrl = TextEditingController();
   final roundsCtrl = TextEditingController();
   final emomTimeCtrl = TextEditingController();
+  final descriptionCtrl = TextEditingController();
 
   // ===== Ejercicio =====
   String? exerciseName;
@@ -31,9 +34,10 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   final seriesCtrl = TextEditingController();
   final repsCtrl = TextEditingController();
   final weightCtrl = TextEditingController();
+  late TextEditingController titleController;
+
 
   String valueType = "reps"; // 👈 NUEVO
-  bool weightNA = false;
   bool perSide = false;
   int? editingExerciseIndex;
 
@@ -55,6 +59,11 @@ void initState() {
   if (blockType == "Tabata") {
     valueType = "time"; // 🔥 fuerza tiempo
   }
+  titleController = TextEditingController(
+  text: widget.initialBlock?['title'] ?? '',
+);
+descriptionCtrl.text = widget.initialBlock?['description'] ?? '';
+
 
   final exercises =
     List<Map<String, dynamic>>.from(b["exercises"] ?? const []);
@@ -65,6 +74,23 @@ currentExercises.addAll(exercises);
   restCtrl.text = b["rest"]?.toString() ?? "";
   roundsCtrl.text = b["rounds"]?.toString() ?? "";
   emomTimeCtrl.text = b["time"]?.toString() ?? "";
+}
+
+@override
+void dispose() {
+  workCtrl.dispose();
+  restCtrl.dispose();
+  roundsCtrl.dispose();
+  emomTimeCtrl.dispose();
+
+  seriesCtrl.dispose();
+  repsCtrl.dispose();
+  weightCtrl.dispose();
+
+  titleController.dispose();
+  descriptionCtrl.dispose();
+
+  super.dispose();
 }
 
 
@@ -81,9 +107,11 @@ currentExercises.addAll(exercises);
   }
 
   final block = {
-    "type": blockType,
-    "exercises": List<Map<String, dynamic>>.from(currentExercises),
-  };
+  "type": blockType,
+  "title": titleController.text.trim(),
+  "description": descriptionCtrl.text.trim(), // 👈 NUEVO
+  "exercises": List<Map<String, dynamic>>.from(currentExercises),
+};
 
   if (blockType == "Tabata") {
     block.addAll({
@@ -104,12 +132,10 @@ currentExercises.addAll(exercises);
     });
   }
 
-  // 🔥 SOLO EL BLOQUE
   editingExerciseIndex = null;
   Navigator.pop(context, block);
-
-
 }
+
 
   // =====================================================
   // AGREGAR / EDITAR EJERCICIO
@@ -124,16 +150,6 @@ currentExercises.addAll(exercises);
     exerciseName = e["name"];
     seriesCtrl.text = e["series"]?.toString() ?? "";
     repsCtrl.text = e["value"]?.toString() ?? "";
-
-    // 👇 CLAVE
-    if (e["weight"] == null) {
-      weightNA = true;
-      weightCtrl.clear();
-    } else {
-      weightNA = false;
-      weightCtrl.text = e["weight"].toString();
-    }
-
     valueType = e["valueType"] ?? "reps";
     perSide = e["perSide"] ?? false;
 
@@ -151,6 +167,21 @@ void _reorderExercises(int oldIndex, int newIndex) {
     currentExercises.insert(newIndex, item);
   });
 }
+
+num _parseWeight(String raw) {
+  final cleaned = raw.replaceAll(',', '.').trim();
+
+  if (cleaned.isEmpty) return 1;
+
+  final parsed = double.tryParse(cleaned) ?? 1;
+
+  if (parsed % 1 == 0) {
+    return parsed.toInt();
+  }
+
+  return double.parse(parsed.toStringAsFixed(2));
+}
+
 
 
 void _addExercise() {
@@ -170,11 +201,8 @@ if (blockType != "Tabata" && repsCtrl.text.isEmpty) {
 }
 
  final int parsedValue = int.tryParse(repsCtrl.text) ?? 0;
- final double? parsedWeight = weightNA
-    ? null
-    : double.tryParse(
-        weightCtrl.text.replaceAll(',', '.').trim(),
-      );
+ final num parsedWeight = _parseWeight(weightCtrl.text);
+
 
 
 
@@ -219,8 +247,6 @@ final ex = {
   searchQuery = "";
   seriesCtrl.clear();
   repsCtrl.clear();
-
-  weightNA = false;
   weightCtrl.text = "0"; // 👈 default SOLO nuevo
 
   valueType = "reps";
@@ -242,27 +268,58 @@ final ex = {
         onPressed: () => Navigator.pop(context),
       ),
 
-      // 🔍 BUSCADOR (EXPANDIDO)
-      Expanded(
-        child: TextField(
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.search),
-            hintText: "Buscar ejercicio",
-            border: OutlineInputBorder(),
-            isDense: true,
-          ),
-          onChanged: (v) =>
-              setState(() => searchQuery = v.toLowerCase()),
-        ),
-      ),
-
-      const SizedBox(width: 8),
+      const Spacer(), // 👈 empuja el resto hacia la derecha
 
       // 💾 GUARDAR BLOQUE
       IconButton(
         icon: const Icon(Icons.save),
         tooltip: "Guardar bloque",
         onPressed: _saveBlock,
+      ),
+    ],
+  );
+}
+
+void _openAddExerciseSheet() {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) {
+      return Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.9,
+          child: _buildExerciseForm(),
+        ),
+      );
+    },
+  );
+}
+
+Widget _buildExerciseForm() {
+  return ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      Text(
+        editingExerciseIndex != null ? "Editar ejercicio" : "Agregar ejercicio",
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 16),
+
+      _exerciseSearchAndSelector(),
+      const SizedBox(height: 16),
+
+      _executionInput(),
+      const SizedBox(height: 16),
+
+      ElevatedButton(
+        onPressed: () {
+          _addExercise();
+          Navigator.pop(context);
+        },
+        child: Text(editingExerciseIndex != null ? "Guardar cambios" : "Agregar"),
       ),
     ],
   );
@@ -276,6 +333,18 @@ final ex = {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      floatingActionButton: FloatingActionButton(
+  child: const Icon(Icons.add),
+  onPressed: () {
+    setState(() {
+      editingExerciseIndex = null;
+      _clearExerciseForm();
+    });
+    _openAddExerciseSheet();
+  },
+),
+
+
 
       body: ListView(
         padding: const EdgeInsets.all(12),
@@ -286,51 +355,7 @@ final ex = {
   _topHeader(),
   _blockConfigCard(),
 
-  const SizedBox(height: 12),
 
-
-          const SizedBox(height: 12),
-
-          // ===== SELECCIÓN EJERCICIO =====
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: exerciseName == null
-                  ? _exerciseSearchAndSelector()
-                  : _selectedExerciseRow(),
-            ),
-          ),
-
-          if (availableEquipment.isNotEmpty)
-            DropdownButtonFormField<String>(
-              value: selectedEquipment,
-              decoration:
-                  const InputDecoration(labelText: "Equipamiento"),
-              items: availableEquipment
-                  .map((e) =>
-                      DropdownMenuItem(value: e, child: Text(e)))
-                  .toList(),
-              onChanged: (v) => setState(() => selectedEquipment = v),
-            ),
-
-          if (blockType == "Series")
-  _num(seriesCtrl, "Series"),
-
-            const SizedBox(height: 8),
-
-          ElevatedButton.icon(
-  icon: Icon(
-    editingExerciseIndex != null ? Icons.save : Icons.add,
-  ),
-  onPressed: () {
-    _addExercise(); // reutilizamos la lógica
-  },
-  label: Text(
-    editingExerciseIndex != null
-        ? "Guardar cambios"
-        : "Agregar ejercicio",
-  ),
-),
 if (editingExerciseIndex != null)
   TextButton(
     onPressed: () {
@@ -341,14 +366,6 @@ if (editingExerciseIndex != null)
     },
     child: const Text("Cancelar edición"),
   ),
-  if (exerciseName != null && blockType != "Tabata") ...[
-  const SizedBox(height: 8),
-  _executionInput(),
-  const SizedBox(height: 8),
-  _weightInput(),
-],
-
-
           const SizedBox(height: 16),
 
           ReorderableListView.builder(
@@ -379,7 +396,11 @@ if (editingExerciseIndex != null)
           children: [
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => _editExercise(index),
+              onPressed: () {
+  _editExercise(index);
+  _openAddExerciseSheet();
+},
+
             ),
             IconButton(
               icon: const Icon(Icons.delete),
@@ -403,26 +424,6 @@ if (editingExerciseIndex != null)
   // =====================================================
   // UI HELPERS
   // =====================================================
-
-  Widget _selectedExerciseRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            exerciseName!,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => setState(_clearExerciseForm),
-        ),
-      ],
-    );
-  }
 
   Widget _exerciseSearchAndSelector() {
     return Column(
@@ -480,7 +481,6 @@ if (editingExerciseIndex != null)
 
       valueType = "reps";
       perSide = data["perSide"] == true; // ✅ FIX REAL
-      weightNA = false;
       weightCtrl.text = "1";
       repsCtrl.clear();
 
@@ -532,9 +532,60 @@ if (editingExerciseIndex != null)
             "Ejecución",
             style: TextStyle(fontWeight: FontWeight.w600),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
 
-          // 🔁 REPS / TIEMPO
+          Row(
+            children: [
+              // SERIES (solo si aplica)
+              if (blockType == "Series") ...[
+                Expanded(
+                  child: TextField(
+                    controller: seriesCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: "Series",
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+
+              // REPS / TIEMPO
+              Expanded(
+                child: TextField(
+                  controller: repsCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: valueType == "reps"
+                        ? "Reps"
+                        : "Tiempo (seg)",
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              // PESO
+              Expanded(
+                child: TextField(
+                  controller: weightCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'^\d+([.,]\d{0,2})?$'),
+                    ),
+                  ],
+                  decoration: const InputDecoration(
+                    labelText: "Peso (kg)",
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Toggle debajo (compacto)
           ToggleButtons(
             isSelected: [
               valueType == "reps",
@@ -558,90 +609,19 @@ if (editingExerciseIndex != null)
             ],
           ),
 
-          const SizedBox(height: 12),
-
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: repsCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText:
-                        valueType == "reps" ? "Repeticiones" : "Tiempo (seg)",
-                  ),
+          if (valueType == "reps") ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Checkbox(
+                  value: perSide,
+                  onChanged: (v) =>
+                      setState(() => perSide = v ?? false),
                 ),
-              ),
-
-              if (valueType == "reps") ...[
-                const SizedBox(width: 12),
-                Column(
-                  children: [
-                    Checkbox(
-                      value: perSide,
-                      onChanged: (v) =>
-                          setState(() => perSide = v ?? false),
-                    ),
-                    const Text(
-                      "Por lado",
-                      style: TextStyle(fontSize: 11),
-                    ),
-                  ],
-                ),
+                const Text("Por lado"),
               ],
-            ],
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-
-Widget _weightInput() {
-  return Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "Carga",
-            style: TextStyle(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: weightCtrl,
-                  enabled: !weightNA,
-                  keyboardType: TextInputType.number,
-                  decoration:
-                      const InputDecoration(labelText: "Peso (kg)"),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                children: [
-                  Checkbox(
-                    value: weightNA,
-                    onChanged: (v) {
-                      setState(() {
-                        weightNA = v ?? false;
-                        if (weightNA) weightCtrl.clear();
-                      });
-                    },
-                  ),
-                  const Text(
-                    "Sin peso",
-                    style: TextStyle(fontSize: 11),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ],
       ),
     ),
@@ -650,25 +630,52 @@ Widget _weightInput() {
 
 
   Widget _blockConfigCard() => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            children: [
-              if (blockType == "Tabata") ...[
-                _num(workCtrl, "Trabajo (seg)"),
-                _num(restCtrl, "Descanso (seg)"),
-                _num(roundsCtrl, "Rondas"),
-              ],
-              if (blockType == "Circuito")
-                _num(roundsCtrl, "Rondas"),
-              if (blockType == "EMOM") ...[
-                _num(emomTimeCtrl, "Tiempo por ronda (seg)"),
-                _num(roundsCtrl, "Rondas"),
-              ],
-            ],
-          ),
-        ),
-      );
+  child: Padding(
+    padding: const EdgeInsets.all(12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+
+        // 🔥 NOMBRE DEL BLOQUE
+        // 🔥 NOMBRE DEL BLOQUE
+TextField(
+  controller: titleController,
+  decoration: const InputDecoration(
+    labelText: "Nombre del bloque",
+  ),
+),
+
+const SizedBox(height: 12),
+
+// 📝 DESCRIPCIÓN DEL BLOQUE
+TextField(
+  controller: descriptionCtrl,
+  decoration: const InputDecoration(
+    labelText: "Descripción / Indicaciones",
+  ),
+  maxLines: 3,
+),
+
+const SizedBox(height: 12),
+
+        const SizedBox(height: 12),
+
+        if (blockType == "Tabata") ...[
+          _num(workCtrl, "Trabajo (seg)"),
+          _num(restCtrl, "Descanso (seg)"),
+          _num(roundsCtrl, "Rondas"),
+        ],
+        if (blockType == "Circuito")
+          _num(roundsCtrl, "Rondas"),
+        if (blockType == "EMOM") ...[
+          _num(emomTimeCtrl, "Tiempo por ronda (seg)"),
+          _num(roundsCtrl, "Rondas"),
+        ],
+      ],
+    ),
+  ),
+);
+
 
   Widget _num(TextEditingController c, String label) => Padding(
         padding: const EdgeInsets.only(bottom: 8),

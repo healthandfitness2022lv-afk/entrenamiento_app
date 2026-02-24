@@ -13,11 +13,10 @@ class WorkoutMetrics {
 }
 
 class WorkoutMetricsService {
-  /// Calcula métricas igual que MyWorkoutDetailsScreen:
-  /// - totalSets (Series done + Circuito + Tabata)
-  /// - totalVolumeKg (solo cuando hay reps y weight)
-  /// - avgRpe (promedio de rpe encontrados)
-  static WorkoutMetrics computeFromPerformed(List<Map<String, dynamic>> performed) {
+
+  static WorkoutMetrics computeFromPerformed(
+    List<Map<String, dynamic>> performed,
+  ) {
     int totalSets = 0;
     int totalVolume = 0;
 
@@ -31,26 +30,36 @@ class WorkoutMetricsService {
       // 🔵 SERIES
       // =========================
       if (type == 'Series') {
-        final sets = List<Map<String, dynamic>>.from(e['sets'] ?? []);
-        for (final s in sets) {
-          if (s['done'] != true) continue;
+        final exercises =
+            List<Map<String, dynamic>>.from(e['exercises'] ?? []);
 
-          totalSets++;
+        for (final ex in exercises) {
+          final sets =
+              List<Map<String, dynamic>>.from(ex['sets'] ?? []);
 
-          final rpe = (s['rpe'] as num?)?.toDouble();
-          if (rpe != null) {
-            rpeSum += rpe;
-            rpeCount++;
-          }
+          final bool perSide = ex['perSide'] == true;
 
-          final double weight = (s['weight'] as num?)?.toDouble() ?? 0;
-          final int reps = (s['reps'] as num?)?.toInt() ?? 0;
-          final bool perSide = s['perSide'] == true;
+          for (final s in sets) {
+            totalSets++;
 
-          final double effectiveWeight = perSide ? weight * 2 : weight;
+            final rpe = (s['rpe'] as num?)?.toDouble();
+            if (rpe != null) {
+              rpeSum += rpe;
+              rpeCount++;
+            }
 
-          if (reps > 0 && effectiveWeight > 0) {
-            totalVolume += (effectiveWeight * reps).round();
+            final double weight =
+                (s['weight'] as num?)?.toDouble() ?? 0;
+            final int reps =
+                (s['reps'] as num?)?.toInt() ?? 0;
+
+            final double effectiveWeight =
+                perSide ? weight * 2 : weight;
+
+            if (reps > 0 && effectiveWeight > 0) {
+              totalVolume +=
+                  (effectiveWeight * reps).round();
+            }
           }
         }
       }
@@ -59,9 +68,14 @@ class WorkoutMetricsService {
       // 🔴 CIRCUITO
       // =========================
       if (type == 'Circuito') {
-        final rounds = List<Map<String, dynamic>>.from(e['rounds'] ?? []);
+        final rounds =
+            List<Map<String, dynamic>>.from(e['rounds'] ?? []);
+
         for (final round in rounds) {
-          final exercises = List<Map<String, dynamic>>.from(round['exercises'] ?? []);
+          final exercises =
+              List<Map<String, dynamic>>.from(
+                  round['exercises'] ?? []);
+
           for (final ex in exercises) {
             totalSets++;
 
@@ -71,13 +85,20 @@ class WorkoutMetricsService {
               rpeCount++;
             }
 
-            final double weight = (ex['weight'] as num?)?.toDouble() ?? 0;
-            final int reps = (ex['reps'] as num?)?.toInt() ?? 0;
-            final bool perSide = ex['perSide'] == true;
-            final double effectiveWeight = perSide ? weight * 2 : weight;
+            final double weight =
+                (ex['weight'] as num?)?.toDouble() ?? 0;
+            final int reps =
+                (ex['reps'] as num?)?.toInt() ?? 0;
+
+            final bool perSide =
+                ex['perSide'] == true;
+
+            final double effectiveWeight =
+                perSide ? weight * 2 : weight;
 
             if (reps > 0 && effectiveWeight > 0) {
-              totalVolume += (effectiveWeight * reps).round();
+              totalVolume +=
+                  (effectiveWeight * reps).round();
             }
           }
         }
@@ -87,7 +108,10 @@ class WorkoutMetricsService {
       // 🟣 TABATA
       // =========================
       if (type == 'Tabata') {
-        final exercises = List<Map<String, dynamic>>.from(e['exercises'] ?? []);
+        final exercises =
+            List<Map<String, dynamic>>.from(
+                e['exercises'] ?? []);
+
         for (final ex in exercises) {
           totalSets++;
 
@@ -97,20 +121,27 @@ class WorkoutMetricsService {
             rpeCount++;
           }
 
-          // Tabata normalmente no suma volumen (a menos que tú guardes reps/weight)
-          final double weight = (ex['weight'] as num?)?.toDouble() ?? 0;
-          final int reps = (ex['reps'] as num?)?.toInt() ?? 0;
-          final bool perSide = ex['perSide'] == true;
-          final double effectiveWeight = perSide ? weight * 2 : weight;
+          final double weight =
+              (ex['weight'] as num?)?.toDouble() ?? 0;
+          final int reps =
+              (ex['reps'] as num?)?.toInt() ?? 0;
+
+          final bool perSide =
+              ex['perSide'] == true;
+
+          final double effectiveWeight =
+              perSide ? weight * 2 : weight;
 
           if (reps > 0 && effectiveWeight > 0) {
-            totalVolume += (effectiveWeight * reps).round();
+            totalVolume +=
+                (effectiveWeight * reps).round();
           }
         }
       }
     }
 
-    final avgRpe = rpeCount > 0 ? (rpeSum / rpeCount) : 0.0;
+    final avgRpe =
+        rpeCount > 0 ? (rpeSum / rpeCount) : 0.0;
 
     return WorkoutMetrics(
       totalSets: totalSets,
@@ -119,9 +150,16 @@ class WorkoutMetricsService {
     );
   }
 
-  /// Helper para convertir DocumentSnapshot -> performed
-  static List<Map<String, dynamic>> performedFromDoc(DocumentSnapshot d) {
-    final data = d.data() as Map<String, dynamic>;
-    return List<Map<String, dynamic>>.from(data['performed'] ?? []);
+  static List<Map<String, dynamic>> performedFromDoc(
+    DocumentSnapshot d,
+  ) {
+    final data =
+        d.data() as Map<String, dynamic>?;
+
+    if (data == null) return [];
+
+    return List<Map<String, dynamic>>.from(
+      data['performed'] ?? [],
+    );
   }
 }

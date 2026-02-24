@@ -60,7 +60,6 @@ class MyApp extends StatelessWidget {
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF39FF14),
           secondary: Color(0xFF2ECC71),
-          background: Color(0xFF121212),
           surface: Color(0xFF1B1B1B),
           onPrimary: Colors.black,
           onSurface: Color(0xFFEAEAEA),
@@ -156,17 +155,17 @@ class MyApp extends StatelessWidget {
         ),
 
         checkboxTheme: CheckboxThemeData(
-          fillColor: MaterialStateProperty.all(
+          fillColor: WidgetStateProperty.all(
             const Color(0xFF39FF14),
           ),
-          checkColor: MaterialStateProperty.all(Colors.black),
+          checkColor: WidgetStateProperty.all(Colors.black),
         ),
 
         switchTheme: SwitchThemeData(
-          thumbColor: MaterialStateProperty.all(
+          thumbColor: WidgetStateProperty.all(
             const Color(0xFF39FF14),
           ),
-          trackColor: MaterialStateProperty.all(
+          trackColor: WidgetStateProperty.all(
             const Color(0x6639FF14),
           ),
         ),

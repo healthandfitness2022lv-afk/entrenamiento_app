@@ -17,28 +17,39 @@ class WorkoutRMHistoryService {
       final DateTime date = w['date'];
       final List performed = w['performed'];
 
-      for (final e in performed) {
-        if (e['type'] != 'Series') continue;
+      for (final block in performed) {
+        if (block['type'] != 'Series') continue;
 
-        final String exName = e['exercise'];
+        final exercises =
+            List<Map<String, dynamic>>.from(block['exercises'] ?? []);
 
-        for (final s in e['sets']) {
-          if (s['done'] != true) continue;
+        for (final ex in exercises) {
 
-          final double weight =
-              (s['weight'] as num?)?.toDouble() ?? 0;
-          final int reps =
-              (s['reps'] as num?)?.toInt() ?? 0;
-          final double rpe =
-              (s['rpe'] as num?)?.toDouble() ?? 0;
+          final String exName = ex['exercise'];
 
-          if (weight <= 0 || reps <= 0 || rpe <= 0) continue;
+          final sets =
+              List<Map<String, dynamic>>.from(ex['sets'] ?? []);
 
-          final rm = weight *
-              (1 + reps / (rpeFactor(rpe) * 30));
+          for (final s in sets) {
+            if (s['done'] != true) continue;
 
-          history.putIfAbsent(exName, () => []);
-          history[exName]!.add(RMPoint(date, rm));
+            final double weight =
+                (s['weight'] as num?)?.toDouble() ?? 0;
+
+            final int reps =
+                (s['reps'] as num?)?.toInt() ?? 0;
+
+            final double rpe =
+                (s['rpe'] as num?)?.toDouble() ?? 0;
+
+            if (weight <= 0 || reps <= 0 || rpe <= 0) continue;
+
+            final rm =
+                weight * (1 + reps / (rpeFactor(rpe) * 30));
+
+            history.putIfAbsent(exName, () => []);
+            history[exName]!.add(RMPoint(date, rm));
+          }
         }
       }
     }

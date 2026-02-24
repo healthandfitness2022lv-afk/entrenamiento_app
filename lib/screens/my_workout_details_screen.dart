@@ -81,29 +81,37 @@ void _calculateStats() {
   totalVolume = 0;
 
   for (final e in performed) {
-    // =======================
-    // 🔵 SERIES
-    // =======================
-    if (e['type'] == 'Series') {
-      for (final s in e['sets']) {
-        if (s['done'] != true) continue;
+   if (e['type'] == 'Series') {
 
-        totalSets++;
+  final exercises =
+      List<Map<String, dynamic>>.from(e['exercises'] ?? []);
 
-        final double weight =
-            (s['weight'] as num?)?.toDouble() ?? 0;
-        final int reps =
-            (s['reps'] as num?)?.toInt() ?? 0;
-        final bool perSide = s['perSide'] == true;
+  for (final ex in exercises) {
+    final sets =
+        List<Map<String, dynamic>>.from(ex['sets'] ?? []);
 
-        final double effectiveWeight =
-            perSide ? weight * 2 : weight;
+    for (final s in sets) {
+      if (s.containsKey('done') && s['done'] != true) continue;
 
-        if (reps > 0 && effectiveWeight > 0) {
-          totalVolume += (effectiveWeight * reps).round();
-        }
+      totalSets++;
+
+      final double weight =
+          (s['weight'] as num?)?.toDouble() ?? 0;
+
+      final int reps =
+          (s['reps'] as num?)?.toInt() ?? 0;
+
+      final bool perSide = s['perSide'] == true;
+
+      final double effectiveWeight =
+          perSide ? weight * 2 : weight;
+
+      if (reps > 0 && effectiveWeight > 0) {
+        totalVolume += (effectiveWeight * reps).round();
       }
     }
+  }
+}
 
     // =======================
     // 🔴 CIRCUITO
@@ -152,17 +160,11 @@ void _calculateStats() {
     final Set<String> names = {};
 
     for (final e in performed) {
-      if (e['type'] == 'Series') {
-        // 🟢 nuevo formato
-        if (e['exercise'] != null) {
-          names.add(e['exercise']);
-        }
-        // 🔵 formato antiguo
-        else if (e['exerciseKey'] != null) {
-          names.add(e['exerciseKey'].toString().split('-').last);
-        }
-      }
-
+    if (e['type'] == 'Series') {
+  for (final ex in e['exercises'] ?? []) {
+    names.add(ex['exercise']);
+  }
+}
       if (e['type'] == 'Circuito') {
         for (final round in e['rounds'] ?? []) {
           for (final ex in round['exercises'] ?? []) {
@@ -261,46 +263,41 @@ Widget _legendCompact(double value, String label, String range) {
   final List<WorkoutSet> result = [];
 
   for (final e in performed) {
-    // ==================================================
-    // 🔵 SERIES
-    // ==================================================
-    if (e['type'] == 'Series') {
-      final String? name =
-          e['exercise'] ??
-          (e['exerciseKey'] != null
-              ? e['exerciseKey'].toString().split('-').last
-              : null);
+   if (e['type'] == 'Series') {
 
-      if (name == null) continue;
+  for (final exEntry in e['exercises']) {
 
-      final ex = exercisesMap[name];
-      if (ex == null) continue;
+    final String name = exEntry['exercise'];
+    final ex = exercisesMap[name];
+    if (ex == null) continue;
 
-      final muscleWeights = _resolveMuscleWeightsFromExercise(ex);
+    final muscleWeights =
+        _resolveMuscleWeightsFromExercise(ex);
 
-      final setsList = List<Map<String, dynamic>>.from(e['sets'] ?? []);
+    final setsList =
+        List<Map<String, dynamic>>.from(
+            exEntry['sets'] ?? []);
 
-for (int i = 0; i < setsList.length; i++) {
-  final s = setsList[i];
-  if (s['done'] != true) continue;
+    for (int i = 0; i < setsList.length; i++) {
+      final s = setsList[i];
+      if (s.containsKey('done') && s['done'] != true) continue;
 
-  result.add(
-    WorkoutSet(
-  exercise: name,
-  sets: 1,
-  reps: (s['reps'] as num?)?.toInt() ?? 1,
-  rpe: (s['rpe'] as num).toDouble(),
-  weight: (s['weight'] as num?)?.toDouble(),
-  perSide: s['perSide'] == true, // 👈 CLAVE
-  setIndex: i + 1,
-  muscleWeights: muscleWeights,
-  sourceType: 'Series',
-),
-
-  );
-}
+      result.add(
+        WorkoutSet(
+          exercise: name,
+          sets: 1,
+          reps: (s['reps'] as num?)?.toInt() ?? 1,
+          rpe: (s['rpe'] as num).toDouble(),
+          weight: (s['weight'] as num?)?.toDouble(),
+          perSide: s['perSide'] == true,
+          setIndex: i + 1,
+          muscleWeights: muscleWeights,
+          sourceType: 'Series',
+        ),
+      );
+    }
   }
-
+}
     // ==================================================
     // 🟣 TABATA
     // ==================================================

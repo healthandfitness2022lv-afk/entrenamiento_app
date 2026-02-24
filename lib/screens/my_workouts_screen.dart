@@ -6,7 +6,6 @@ import '../utils/workout_rpe_utils.dart';
 import 'my_workout_details_screen.dart';
 import '../services/workout_volume_service.dart';
 import '../models/routine_session_summary.dart';
-import 'routine_exercise_progress_screen.dart';
 import 'log_workout_screen.dart';
 
 
@@ -71,38 +70,32 @@ double _parseDouble(dynamic v) {
   
 
 Widget _performedWorkoutView(List<Map<String, dynamic>> performed) {
-  final series = performed.where((p) => p['type'] == 'Series').toList();
-  final circuitos = performed.where((p) => p['type'] == 'Circuito').toList();
-  final tabatas = performed.where((p) => p['type'] == 'Tabata').toList();
+  final List<Map<String, dynamic>> seriesExercises = [];
+
+  for (final p in performed.where((p) => p['type'] == 'Series')) {
+    final List exs = p['exercises'] ?? [];
+
+    for (final ex in exs) {
+      seriesExercises.add({
+        ...ex,
+        'blockIndex': p['blockIndex'],
+      });
+    }
+  }
+
+  final circuitos =
+      performed.where((p) => p['type'] == 'Circuito').toList();
+
+  final tabatas =
+      performed.where((p) => p['type'] == 'Tabata').toList();
 
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      if (series.isNotEmpty) _seriesBlockGroup(series),
+      ...seriesExercises.map(_seriesExerciseRow),
       ...circuitos.map(_circuitBlockView),
       ...tabatas.map(_tabataBlockView),
     ],
-  );
-}
-
-Widget _seriesBlockGroup(List<Map<String, dynamic>> seriesBlocks) {
-  return Padding(
-    padding: const EdgeInsets.only(bottom: 16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Series",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        ...seriesBlocks.map(_seriesExerciseRow),
-      ],
-    ),
   );
 }
 
@@ -274,6 +267,8 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
 
     final double avgRpe =
         calculateAverageWorkoutRPE(performed);
+    
+
 
     grouped.putIfAbsent(routineId, () => []).add(
       RoutineSessionSummary(
@@ -349,6 +344,10 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
     final double avgRpe =
     calculateAverageWorkoutRPE(performed);
 
+    final int duration =
+    (data['durationMinutes'] as num?)?.toInt() ?? 0;
+
+
     return Card(
       elevation: 2,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -372,26 +371,43 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
   mainAxisSize: MainAxisSize.min,
   children: [
     Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          "${volume.toStringAsFixed(0)} kg",
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.blueAccent,
-          ),
+  mainAxisAlignment: MainAxisAlignment.center,
+  crossAxisAlignment: CrossAxisAlignment.end,
+  children: [
+
+    // 🕒 DURACIÓN
+    if (duration > 0)
+      Text(
+        "${duration} min",
+        style: const TextStyle(
+          fontSize: 12,
+          color: Colors.grey,
         ),
-        if (avgRpe > 0)
-          Text(
-            "RPE ${avgRpe.toStringAsFixed(1)}",
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.orangeAccent,
-            ),
-          ),
-      ],
+      ),
+
+    const SizedBox(height: 2),
+
+    // 🏋 VOLUMEN
+    Text(
+      "${volume.toStringAsFixed(0)} kg",
+      style: const TextStyle(
+        fontWeight: FontWeight.bold,
+        color: Colors.blueAccent,
+      ),
     ),
+
+    // 🔥 RPE
+    if (avgRpe > 0)
+      Text(
+        "RPE ${avgRpe.toStringAsFixed(1)}",
+        style: const TextStyle(
+          fontSize: 12,
+          color: Colors.orangeAccent,
+        ),
+      ),
+  ],
+),
+
 
     const SizedBox(width: 6),
 
@@ -403,7 +419,10 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
       context,
       MaterialPageRoute(
         builder: (_) => LogWorkoutScreen(
-          existingWorkout: d.data() as Map<String, dynamic>,
+          existingWorkout: {
+  'id': d.id,
+  ...d.data() as Map<String, dynamic>,
+},
           workoutRef: d.reference,
         ),
       ),
@@ -437,26 +456,7 @@ Builder(
       return const SizedBox();
     }
 
-    return TextButton.icon(
-      icon: const Icon(Icons.trending_up),
-      label: const Text("Ver progreso de la rutina"),
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => RoutineExerciseProgressScreen(
-  routineName: data['routineName'] ?? 'Rutina',
-  workouts: filtered
-      .where((w) => w['routineId'] == data['routineId'])
-      .toList(),
-),
-
-
-
-          ),
-        );
-      },
-    );
+    return const SizedBox();
   },
 ),
 

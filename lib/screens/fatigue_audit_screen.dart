@@ -80,92 +80,216 @@ void initState() {
   }).toList();
 }
 
+List<FatigueRecalculationStep> _sortSteps(List<FatigueRecalculationStep> steps) {
+  final sorted = [...steps]..sort((a, b) => a.workoutDate.compareTo(b.workoutDate));
+  return sorted;
+}
+
+List<FlSpot> _buildGlobalTimeline(
+  List<FatigueRecalculationStep> steps,
+  DateTime endTime, {
+  int topK = 6,
+}) {
+  if (steps.isEmpty) return [];
+
+  final sorted = _sortSteps(steps);
+
+  final start = sorted.first.workoutDate;
+  final end = endTime;
+
+  // Estado por músculo: fatiga + lastUpdate
+  final Map<Muscle, double> fatigue = {
+    for (final m in Muscle.values) m: 0.0,
+  };
+  final Map<Muscle, DateTime> lastUpdate = {
+    for (final m in Muscle.values) m: start,
+  };
+
+  // índice de workouts (steps) que tienen update real
+  int i = 0;
+
+  // helper: aplica todos los steps con workoutDate <= t
+  void applyStepsUpTo(DateTime t) {
+    while (i < sorted.length && !sorted[i].workoutDate.isAfter(t)) {
+      final step = sorted[i];
+      final wTime = step.workoutDate;
+
+      for (final m in Muscle.values) {
+        // recuperar hasta la hora exacta del workout
+        fatigue[m] = FatigueService.recoverToNow(
+          fatigue: fatigue[m] ?? 0,
+          lastUpdate: lastUpdate[m] ?? start,
+          now: wTime,
+        );
+        lastUpdate[m] = wTime;
+
+        // aplicar el "salto" del workout si hay dato
+        // (fatigueAfter es el estado post-carga)
+        final after = step.fatigueAfter[m];
+        if (after != null) {
+          fatigue[m] = after;
+          lastUpdate[m] = wTime;
+        }
+      }
+
+      i++;
+    }
+  }
+
+  final spots = <FlSpot>[];
+
+  DateTime cursor = start;
+  while (!cursor.isAfter(end)) {
+    applyStepsUpTo(cursor);
+
+    // recuperar desde lastUpdate hasta cursor
+    final values = <double>[];
+    for (final m in Muscle.values) {
+      final v = FatigueService.recoverToNow(
+        fatigue: fatigue[m] ?? 0,
+        lastUpdate: lastUpdate[m] ?? start,
+        now: cursor,
+      );
+
+      // deja esta línea si quieres ignorar ruido
+      // (si quieres que se comporte EXACTO como las otras sin umbral, quítala)
+      if (v >= 5) values.add(v);
+    }
+
+    double global = 0;
+    if (values.isNotEmpty) {
+      values.sort((a, b) => b.compareTo(a));
+      final top = values.take(topK).toList();
+      global = top.reduce((a, b) => a + b) / top.length;
+    }
+
+    final x = cursor.difference(start).inMinutes / 60.0 / 24.0;
+    spots.add(FlSpot(x, global));
+
+    cursor = cursor.add(const Duration(days: 1));
+  }
+
+  // 🔥 Recuperación final exacta hasta endTime
+applyStepsUpTo(endTime);
+
+final values = <double>[];
+
+for (final m in Muscle.values) {
+  final v = FatigueService.recoverToNow(
+    fatigue: fatigue[m] ?? 0,
+    lastUpdate: lastUpdate[m] ?? start,
+    now: endTime,
+  );
+
+  if (v >= 5) values.add(v);
+}
+
+double global = 0;
+
+if (values.isNotEmpty) {
+  values.sort((a, b) => b.compareTo(a));
+  final top = values.take(topK).toList();
+  global = top.reduce((a, b) => a + b) / top.length;
+}
+
+final finalX =
+    endTime.difference(start).inMinutes / 60.0 / 24.0;
+
+spots.add(FlSpot(finalX, global));
+
+  return spots;
+}
+
+
+
+
 
 
 List<FlSpot> _buildMuscleTimeline(
   Muscle muscle,
-  List<FatigueRecalculationStep> filtered,
-) {
-  if (filtered.isEmpty) return [];
+  List<FatigueRecalculationStep> steps, {
+  required DateTime endTime,
+}) {
+  if (steps.isEmpty) return [];
 
-  final startDate = DateTime(
-    filtered.first.workoutDate.year,
-    filtered.first.workoutDate.month,
-    filtered.first.workoutDate.day,
-  );
+  final sorted = [...steps]
+    ..sort((a, b) => a.workoutDate.compareTo(b.workoutDate));
 
-  final endDate = DateTime(
-    filtered.last.workoutDate.year,
-    filtered.last.workoutDate.month,
-    filtered.last.workoutDate.day,
-  );
+  final start = sorted.first.workoutDate;
 
-  // Agrupar sesiones por día
-  final stepsByDay = <DateTime, List<FatigueRecalculationStep>>{};
-  for (final s in filtered) {
-    final day = DateTime(
-      s.workoutDate.year,
-      s.workoutDate.month,
-      s.workoutDate.day,
-    );
-    stepsByDay.putIfAbsent(day, () => []);
-    stepsByDay[day]!.add(s);
+  double fatigue = 0;
+  DateTime lastUpdate = start;
+  int i = 0;
+
+  final spots = <FlSpot>[]; // 🔥 MOVER AQUÍ ARRIBA
+
+  void applyStepsUpTo(DateTime t) {
+    while (i < sorted.length && !sorted[i].workoutDate.isAfter(t)) {
+      final step = sorted[i];
+      final wTime = step.workoutDate;
+
+      // recuperar hasta workout
+      fatigue = FatigueService.recoverToNow(
+        fatigue: fatigue,
+        lastUpdate: lastUpdate,
+        now: wTime,
+      );
+
+      final xBefore =
+          wTime.difference(start).inMinutes / 60 / 24;
+
+      // 🔥 punto antes
+      spots.add(FlSpot(xBefore, fatigue));
+
+      // aplicar carga
+      final load = step.loadApplied[muscle] ?? 0;
+      fatigue += load;
+
+      lastUpdate = wTime;
+
+      // 🔥 punto después
+      spots.add(FlSpot(xBefore + 0.0001, fatigue));
+
+      i++;
+    }
   }
 
-  double currentFatigue =
-      filtered.first.fatigueBefore[muscle] ?? 0;
+  DateTime cursor =
+      DateTime(start.year, start.month, start.day);
 
-  DateTime lastUpdate =
-      filtered.first.workoutDate;
+  final endDay =
+      DateTime(endTime.year, endTime.month, endTime.day, 23, 59, 59, 999);
 
-  final spots = <FlSpot>[];
-  DateTime cursor = startDate;
+  while (!cursor.isAfter(endDay)) {
+    applyStepsUpTo(cursor);
 
-  while (!cursor.isAfter(endDate)) {
-    final dayIndex =
-        cursor.difference(startDate).inHours / 24.0;
-
-    // 🔵 Recuperación hasta inicio del día
-    currentFatigue = FatigueService.recoverToNow(
-      fatigue: currentFatigue,
+    final value = FatigueService.recoverToNow(
+      fatigue: fatigue,
       lastUpdate: lastUpdate,
       now: cursor,
     );
 
-    spots.add(FlSpot(dayIndex, currentFatigue));
-    lastUpdate = cursor;
+    final x =
+        cursor.difference(start).inMinutes / 60 / 24;
 
-    // 🔴 Aplicar sesiones del día
-    final sessions = stepsByDay[cursor] ?? [];
-
-    sessions.sort(
-      (a, b) => a.workoutDate.compareTo(b.workoutDate),
-    );
-
-    for (int i = 0; i < sessions.length; i++) {
-      final s = sessions[i];
-
-      currentFatigue = FatigueService.recoverToNow(
-        fatigue: currentFatigue,
-        lastUpdate: lastUpdate,
-        now: s.workoutDate,
-      );
-
-      lastUpdate = s.workoutDate;
-
-      final load =
-          (s.fatigueAfter[muscle] ?? 0) -
-          (s.fatigueAfterRecovery[muscle] ?? 0);
-
-      currentFatigue += load;
-
-      final offset = 0.25 + (i * 0.15);
-
-      spots.add(FlSpot(dayIndex + offset, currentFatigue));
-    }
+    spots.add(FlSpot(x, value));
 
     cursor = cursor.add(const Duration(days: 1));
   }
+
+  // punto final exacto
+  applyStepsUpTo(endTime);
+
+  final finalValue = FatigueService.recoverToNow(
+    fatigue: fatigue,
+    lastUpdate: lastUpdate,
+    now: endTime,
+  );
+
+  final finalX =
+      endTime.difference(start).inMinutes / 60 / 24;
+
+  spots.add(FlSpot(finalX, finalValue));
 
   return spots;
 }
@@ -173,37 +297,39 @@ List<FlSpot> _buildMuscleTimeline(
 List<FlSpot> _buildGroupTimeline(
   List<Muscle> muscles,
   List<FatigueRecalculationStep> filtered,
+  DateTime endTime,
 ) {
-  final Map<double, double> aggregated = {};
+  final Map<double, List<double>> aggregated = {};
 
   for (final m in muscles) {
-    final timeline = _buildMuscleTimeline(m, filtered);
+    final timeline = _buildMuscleTimeline(
+      m,
+      filtered,
+      endTime: endTime,
+    );
 
     for (final spot in timeline) {
-      aggregated.update(
-        spot.x,
-        (value) => value + spot.y,
-        ifAbsent: () => spot.y,
-      );
+      final x = (spot.x * 1000).round() / 1000;
+
+      aggregated.putIfAbsent(x, () => []);
+      aggregated[x]!.add(spot.y);
     }
   }
 
-  return aggregated.entries
-      .map((e) => FlSpot(e.key, e.value))
-      .toList()
-    ..sort((a, b) => a.x.compareTo(b.x));
+  final result = aggregated.entries.map((e) {
+    final avg =
+        e.value.reduce((a, b) => a + b) / e.value.length;
+    return FlSpot(e.key, avg);
+  }).toList();
+
+  result.sort((a, b) => a.x.compareTo(b.x));
+
+  return result;
 }
-
-
-
-
-
-
-
-
 
 Widget _auditFatigueChart(List<FatigueRecalculationStep> steps) {
   final filtered = _filterStepsByRange(steps);
+
   final startDate = filtered.first.workoutDate;
 
 
@@ -219,6 +345,12 @@ Widget _auditFatigueChart(List<FatigueRecalculationStep> steps) {
 
 
 final series = <String, List<FlSpot>>{};
+final now = DateTime.now();
+
+// si hay chartRange, usar su end; si no, usar now
+
+// si el usuario eligió rango futuro (no debería), lo capamos a now
+final timelineEnd = now;
 
 if (viewMode == AuditViewMode.muscle) {
   for (final m in chartMuscles) {
@@ -243,27 +375,33 @@ else if (viewMode == AuditViewMode.functional) {
   if (viewMode == AuditViewMode.muscle) {
   for (final m in chartMuscles) {
     series[m.label] =
-        _buildMuscleTimeline(m, filtered);
+    _buildMuscleTimeline(
+      m,
+      filtered,
+      endTime: timelineEnd,
+    );
   }
 }
 
 if (viewMode == AuditViewMode.anatomical) {
   for (final group in selectedAnatomicalGroups) {
     series[group.label] =
-        _buildGroupTimeline(
-          anatomicalGroups[group]!,
-          filtered,
-        );
+    _buildGroupTimeline(
+      anatomicalGroups[group]!,
+      filtered,
+      timelineEnd,
+    );
   }
 }
 
 if (viewMode == AuditViewMode.functional) {
   for (final group in selectedFunctionalGroups) {
     series[group.label] =
-        _buildGroupTimeline(
-          functionalGroups[group]!,
-          filtered,
-        );
+    _buildGroupTimeline(
+      functionalGroups[group]!,
+      filtered,
+      timelineEnd,
+    );
   }
 
 
@@ -271,41 +409,14 @@ if (viewMode == AuditViewMode.functional) {
 final globalSeries = <FlSpot>[];
 
 if (showGlobalFatigue) {
-  final Map<double, Map<Muscle, double>> fatigueByX = {};
-
-  // 1️⃣ Construir fatiga por músculo en cada punto X
-  for (final m in Muscle.values) {
-    final timeline = _buildMuscleTimeline(m, filtered);
-
-    for (final spot in timeline) {
-      fatigueByX.putIfAbsent(spot.x, () => {});
-      fatigueByX[spot.x]![m] = spot.y;
-    }
-  }
-
-  // 2️⃣ En cada X tomar los 6 mayores
-  for (final entry in fatigueByX.entries) {
-    final x = entry.key;
-    final values = entry.value.values.toList();
-
-    if (values.isEmpty) continue;
-
-    values.sort((a, b) => b.compareTo(a));
-
-    final top6 = values.take(6).toList();
-
-    final avg =
-        top6.reduce((a, b) => a + b) / top6.length;
-
-    globalSeries.add(FlSpot(x, avg));
-  }
-
-  globalSeries.sort((a, b) => a.x.compareTo(b.x));
+  globalSeries.addAll(
+  _buildGlobalTimeline(
+    filtered,
+    timelineEnd,
+    topK: 6,
+  ),
+);
 }
-
-
-
-
 
 double maxYValue = 100;
 
@@ -463,7 +574,6 @@ maxY: maxYValue + 10,
       barWidth: 4,
       color: const Color.fromARGB(255, 221, 0, 0),
       dotData: FlDotData(show: false),
-      dashArray: [6, 4], // punteada profesional
     ),
 ],
       ),

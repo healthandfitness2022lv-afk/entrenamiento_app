@@ -86,38 +86,49 @@ class _AddRoutineScreenState extends State<AddRoutineScreen> {
   // BLOCK SUMMARY
   // =========================
   String _blockSummary(Map<String, dynamic> b) {
-    switch (b["type"]) {
-      case "Tabata":
-        return "Tabata ${b["work"]}/${b["rest"]} x ${b["rounds"]}";
-      case "Circuito":
-        return "Circuito ${b["rounds"]} rondas";
-      case "EMOM":
-        return "EMOM ${b["time"]}s x ${b["rounds"]}";
-      case "Series":
-  return "Series (${(b["exercises"] as List).length} ejercicios)";
+  final title = (b["title"] ?? "").toString().trim();
+  final type = b["type"] ?? "Bloque";
 
-      default:
-        return b["type"] ?? "Bloque";
-    }
+  if (title.isNotEmpty) {
+    return title; // 👈 si tiene nombre personalizado lo usamos
   }
+
+  switch (type) {
+    case "Tabata":
+      return "Tabata ${b["work"]}/${b["rest"]} x ${b["rounds"]}";
+    case "Circuito":
+      return "Circuito ${b["rounds"]} rondas";
+    case "EMOM":
+      return "EMOM ${b["time"]}s x ${b["rounds"]}";
+    case "Series":
+      return "Series (${(b["exercises"] as List).length} ejercicios)";
+    default:
+      return type;
+  }
+}
+
 
   // =========================
   // UI HELPERS
   // =========================
-  Future<void> _openBlockEditor(int index) async {
-  final updatedBlock = await Navigator.push<Map<String, dynamic>>(
+  void _openBlockEditorWithType(String type) async {
+  final newBlock = await Navigator.push<Map<String, dynamic>>(
     context,
     MaterialPageRoute(
       builder: (_) => AddWorkoutScreen(
-        initialBlock: Map<String, dynamic>.from(routineBlocks[index]),
+        initialBlock: {
+          "type": type,
+          "title": "", // 👈 nuevo campo
+          "exercises": [],
+        },
       ),
     ),
   );
 
-  if (updatedBlock == null) return;
+  if (newBlock == null) return;
 
   setState(() {
-    routineBlocks[index] = Map<String, dynamic>.from(updatedBlock);
+    routineBlocks.add(Map<String, dynamic>.from(newBlock));
   });
 }
 
@@ -187,25 +198,23 @@ Widget _blockTypeTile(String type) {
   );
 }
 
-void _openBlockEditorWithType(String type) async {
-  final newBlock = await Navigator.push<Map<String, dynamic>>(
+Future<void> _openBlockEditor(int index) async {
+  final updatedBlock = await Navigator.push<Map<String, dynamic>>(
     context,
     MaterialPageRoute(
       builder: (_) => AddWorkoutScreen(
-        initialBlock: {
-          "type": type,
-          "exercises": [],
-        },
+        initialBlock: Map<String, dynamic>.from(routineBlocks[index]),
       ),
     ),
   );
 
-  if (newBlock == null) return;
+  if (updatedBlock == null) return;
 
   setState(() {
-    routineBlocks.add(Map<String, dynamic>.from(newBlock));
+    routineBlocks[index] = Map<String, dynamic>.from(updatedBlock);
   });
 }
+
 
   void _reorderBlocks(int oldIndex, int newIndex) {
     setState(() {
@@ -215,20 +224,51 @@ void _openBlockEditorWithType(String type) async {
     });
   }
 
- Widget _blockTile(int index) {
+Widget _blockTile(int index) {
   final block = routineBlocks[index];
   final exercises =
       List<Map<String, dynamic>>.from(block['exercises'] ?? []);
 
+  final String title =
+      (block['title'] ?? '').toString().trim();
+
+  final String type =
+      (block['type'] ?? 'Bloque').toString();
+
   return Card(
     key: ValueKey(block.hashCode),
+    elevation: 2,
+    margin: const EdgeInsets.symmetric(vertical: 6),
     child: ExpansionTile(
       leading: ReorderableDragStartListener(
         index: index,
         child: const Icon(Icons.drag_handle),
       ),
-      title: Text(_blockSummary(block)),
-      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+
+      // 👇 TÍTULO PROFESIONAL
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.isNotEmpty ? title : _blockSummary(block),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          Text(
+            type,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.grey,
+            ),
+          ),
+        ],
+      ),
+
+      childrenPadding:
+          const EdgeInsets.fromLTRB(16, 0, 16, 12),
+
       children: [
         if (exercises.isEmpty)
           const Padding(
@@ -263,16 +303,22 @@ void _openBlockEditorWithType(String type) async {
 
 Widget _exerciseRow(Map<String, dynamic> e) {
   final perSide = e['perSide'] == true;
-  final weight = e['weight'];
 
-  String valueText = "";
+  final series = e['series']; // puede venir null si no es bloque Series
+  final weightText = _formatWeight(e['weight']);
 
+  String valueText;
   if (e['valueType'] == 'time') {
     valueText = "${e['value']} s";
   } else {
-    valueText =
-        "${e['value']} reps${perSide ? " por lado" : ""}";
+    valueText = "${e['value']} reps${perSide ? " por lado" : ""}";
   }
+
+  final parts = <String>[
+    if (series != null) "${series}×",
+    valueText,
+    if (weightText.isNotEmpty) "${weightText}kg",
+  ];
 
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 4),
@@ -282,10 +328,7 @@ Widget _exerciseRow(Map<String, dynamic> e) {
         const SizedBox(width: 6),
         Expanded(child: Text(e['name'])),
         Text(
-          [
-            valueText,
-            if (weight != null) "${weight}kg",
-          ].join(" · "),
+          parts.join(" · "),
           style: const TextStyle(
             fontSize: 12,
             color: Colors.grey,
@@ -294,6 +337,25 @@ Widget _exerciseRow(Map<String, dynamic> e) {
       ],
     ),
   );
+}
+
+String _formatWeight(dynamic w) {
+  if (w == null) return "";
+
+  // si viene como string con coma, normalizamos
+  final s = w.toString().trim().replaceAll(',', '.');
+  final d = double.tryParse(s);
+  if (d == null) return w.toString();
+
+  // si es entero, sin decimales
+  if (d % 1 == 0) return d.toInt().toString();
+
+  // si tiene decimales, máximo 2 y sin ceros al final
+  var out = d.toStringAsFixed(2);
+  out = out.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+
+  // volvemos a coma para mostrar (7,5)
+  return out.replaceAll('.', ',');
 }
 
 

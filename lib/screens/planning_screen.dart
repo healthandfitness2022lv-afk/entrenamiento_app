@@ -3,7 +3,7 @@ import 'package:table_calendar/table_calendar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../screens/weekly_load_screen.dart';
-import '../screens/routine_details_screen.dart';
+import '../widgets/routine_view.dart';
 
 
 class PlanningScreen extends StatefulWidget {
@@ -13,6 +13,86 @@ class PlanningScreen extends StatefulWidget {
   State<PlanningScreen> createState() => _PlanningScreenState();
 }
 
+class _DayPlannedItem {
+  final String key; // name:xxx
+  final String name;
+  final String blockLabel; // "Series • Bloque 1 • Fuerza"
+  final double plannedVol;
+
+  _DayPlannedItem({
+    required this.key,
+    required this.name,
+    required this.blockLabel,
+    required this.plannedVol,
+  });
+}
+
+class _DayResultItem {
+  final _DayPlannedItem planned;
+  final double achieved; // consumido desde “bolsa” semanal
+  double get missing => (planned.plannedVol - achieved).clamp(0, double.infinity);
+
+  _DayResultItem({required this.planned, required this.achieved});
+}
+
+class _MetricTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _MetricTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(12),
+        color: theme.colorScheme.surface,
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min, // ✅ clave anti-overflow
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 class _PlanningScreenState extends State<PlanningScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay = DateTime.now();
@@ -168,6 +248,12 @@ Map<String, DocumentSnapshot> _routineCache = {};
   setState(() {});
 }
 
+DateTime _normalizeDayLocal(DateTime d) {
+  // 🔥 mediodía local evita corrimientos por UTC/DST
+  return DateTime(d.year, d.month, d.day, 12);
+}
+
+
 Future<Map<String, double>> calculateWeeklyMuscleLoad() async {
   final startOfWeek = _selectedDay!
       .subtract(Duration(days: _selectedDay!.weekday - 1));
@@ -288,179 +374,605 @@ Future<Map<String, double>> calculateWeeklyMuscleLoad() async {
     _loadPlannedForDay(_selectedDay!);
   }
 
-  String _blockTitle(Map<String, dynamic> block) {
-  switch (block['type']) {
-    case "Series":
-      return "Series";
-    case "Circuito":
-      return "Circuito · ${block['rounds']} rondas";
-    case "EMOM":
-      return "EMOM · ${block['time']}s · ${block['rounds']} rondas";
-    case "Tabata":
-      return "Tabata ${block['work']}/${block['rest']} · ${block['rounds']} rondas";
-    default:
-      return block['type'] ?? '';
-  }
+
+String _norm(String s) {
+  return s
+      .toLowerCase()
+      .trim()
+      .replaceAll(RegExp(r'\s+'), ' ');
 }
 
-IconData _blockIcon(String type) {
-  switch (type) {
-    case "Series":
-      return Icons.fitness_center;
-    case "Circuito":
-      return Icons.loop;
-    case "EMOM":
-      return Icons.timer;
-    case "Tabata":
-      return Icons.flash_on;
-    default:
-      return Icons.category;
-  }
+String normalizeExerciseName(dynamic raw) {
+  if (raw == null) return '';
+  if (raw is String) return raw.trim();
+  if (raw is List && raw.isNotEmpty) return raw.first.toString().trim();
+  return raw.toString().trim();
 }
 
+String _dayKey(DateTime d) {
+  final x = DateTime(d.year, d.month, d.day);
+  return "${x.year.toString().padLeft(4, '0')}-"
+      "${x.month.toString().padLeft(2, '0')}-"
+      "${x.day.toString().padLeft(2, '0')}";
+}
 
-  Widget _buildExpandedRoutine(DocumentSnapshot routineDoc) {
-  final data = routineDoc.data() as Map<String, dynamic>;
-  final blocks =
-      List<Map<String, dynamic>>.from(data['blocks'] ?? []);
+DateTime _startOfWeekMonday(DateTime d) {
+  final day = DateTime(d.year, d.month, d.day);
+  return day.subtract(Duration(days: day.weekday - 1));
+}
 
-  return Container(
-    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+Future<void> _reviewWeekDetailedByDay() async {
+  final base = _selectedDay ?? DateTime.now();
+  final startOfWeek = _startOfWeekMonday(base);
+  final endOfWeek = startOfWeek.add(const Duration(days: 7)); // exclusivo
 
-        const Divider(),
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const AlertDialog(
+      content: SizedBox(height: 90, child: Center(child: CircularProgressIndicator())),
+    ),
+  );
 
-        // 🔥 Nombre rutina
-        Text(
-          data['name'] ?? '',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+  try {
+    // =========================
+    // 1) Traer planificados (planned_workouts)
+    // =========================
+    final plannedSnap = await FirebaseFirestore.instance
+        .collection('planned_workouts')
+        .where('athleteId', isEqualTo: selectedAthleteId)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfWeek))
+        .where('date', isLessThan: Timestamp.fromDate(endOfWeek))
+        .get();
 
-        const SizedBox(height: 16),
+    final plannedDocs = plannedSnap.docs.map((d) => d.data()).toList();
 
-        // 🔥 BLOQUES
-        ...blocks.map((block) {
-          final exercises =
-              List<Map<String, dynamic>>.from(block['exercises'] ?? []);
+    // Cache rutinas
+    final Map<String, Map<String, dynamic>> routineCache = {};
 
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+    // plannedByDay[YYYY-MM-DD] = [items...]
+    final Map<String, List<_DayPlannedItem>> plannedByDay = {};
 
-                // =============================
-                // TÍTULO BLOQUE
-                // =============================
-                Row(
+    String _blockLabel(int idx, Map<String, dynamic> block) {
+      final type = (block['type'] ?? 'Bloque').toString();
+      final title = (block['title'] ?? block['name'] ?? '').toString().trim();
+      final t = title.isNotEmpty ? " • $title" : "";
+      return "$type • Bloque ${idx + 1}$t";
+    }
+
+    // Extrae ejercicios planificados desde la rutina (y trae bloque)
+    List<_DayPlannedItem> _extractPlannedItemsFromRoutine(
+      Map<String, dynamic> routine,
+    ) {
+      final out = <_DayPlannedItem>[];
+
+      final blocks = (routine['blocks'] is List) ? List.from(routine['blocks']) : const [];
+      for (int i = 0; i < blocks.length; i++) {
+        final bRaw = blocks[i];
+        if (bRaw is! Map) continue;
+
+        final block = Map<String, dynamic>.from(bRaw);
+        final type = (block['type'] ?? '').toString();
+        final label = _blockLabel(i, block);
+
+        // SERIES: cada ejercicio tiene 'name' y 'series' (=sets)
+        if (type == 'Series') {
+          final exs = (block['exercises'] is List) ? List.from(block['exercises']) : const [];
+          for (final exRaw in exs) {
+            if (exRaw is! Map) continue;
+            final ex = Map<String, dynamic>.from(exRaw);
+            final name = normalizeExerciseName(ex['name']);
+            final sets = (ex['series'] is num) ? (ex['series'] as num).toDouble() : 0.0;
+            if (name.isEmpty || sets <= 0) continue;
+
+            final key = "name:${_norm(name)}";
+            out.add(_DayPlannedItem(
+              key: key,
+              name: name,
+              blockLabel: label,
+              plannedVol: sets,
+            ));
+          }
+        }
+
+        // CIRCUITO: block['rounds'] y exercises con name
+        if (type == 'Circuito') {
+          final rounds = (block['rounds'] is num) ? (block['rounds'] as num).toDouble() : 0.0;
+          final exs = (block['exercises'] is List) ? List.from(block['exercises']) : const [];
+          if (rounds <= 0) continue;
+
+          for (final exRaw in exs) {
+            if (exRaw is! Map) continue;
+            final ex = Map<String, dynamic>.from(exRaw);
+            final name = normalizeExerciseName(ex['name']);
+            if (name.isEmpty) continue;
+
+            final key = "name:${_norm(name)}";
+            out.add(_DayPlannedItem(
+              key: key,
+              name: name,
+              blockLabel: label,
+              plannedVol: rounds, // 1 por ronda
+            ));
+          }
+        }
+
+        // TABATA: block['rounds'] y exercises con name
+        if (type == 'Tabata') {
+          final rounds = (block['rounds'] is num) ? (block['rounds'] as num).toDouble() : 1.0;
+          final exs = (block['exercises'] is List) ? List.from(block['exercises']) : const [];
+          for (final exRaw in exs) {
+            if (exRaw is! Map) continue;
+            final ex = Map<String, dynamic>.from(exRaw);
+            final name = normalizeExerciseName(ex['name']);
+            if (name.isEmpty) continue;
+
+            final key = "name:${_norm(name)}";
+            out.add(_DayPlannedItem(
+              key: key,
+              name: name,
+              blockLabel: label,
+              plannedVol: rounds, // si prefieres 1 por tabata, cambia rounds -> 1.0
+            ));
+          }
+        }
+      }
+
+      return out;
+    }
+
+    // Construir plannedByDay
+    for (final p in plannedDocs) {
+      final ts = p['date'] as Timestamp?;
+      if (ts == null) continue;
+      final day = _dayKey(ts.toDate());
+
+      final routineId = (p['routineId'] ?? '').toString();
+      if (routineId.isEmpty) continue;
+
+      Map<String, dynamic> routine;
+      if (routineCache.containsKey(routineId)) {
+        routine = routineCache[routineId]!;
+      } else {
+        final rDoc = await FirebaseFirestore.instance.collection('routines').doc(routineId).get();
+        routine = (rDoc.data() ?? {});
+        routineCache[routineId] = routine;
+      }
+
+      final items = _extractPlannedItemsFromRoutine(routine);
+      plannedByDay.putIfAbsent(day, () => []).addAll(items);
+    }
+
+    // =========================
+    // 2) Traer realizados (workouts_logged)
+    // =========================
+    final performedSnap = await FirebaseFirestore.instance
+        .collection('workouts_logged')
+        .where('userId', isEqualTo: selectedAthleteId)
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfWeek))
+        .where('date', isLessThan: Timestamp.fromDate(endOfWeek))
+        .get();
+
+    final performedDocs = performedSnap.docs.map((d) => d.data()).toList();
+
+    final Map<String, double> doneWeekByKey = {};
+
+    void addDone(String name, double vol) {
+      if (name.trim().isEmpty || vol <= 0) return;
+      final key = "name:${_norm(name)}";
+      doneWeekByKey[key] = (doneWeekByKey[key] ?? 0) + vol;
+    }
+
+    for (final w in performedDocs) {
+      final performed = w['performed'];
+      if (performed is! List) continue;
+
+      for (final it in performed) {
+        if (it is! Map) continue;
+        final e = Map<String, dynamic>.from(it);
+        final type = (e['type'] ?? '').toString();
+
+        if (type == 'Series') {
+          final name = normalizeExerciseName(e['exercise']);
+          final sets = (e['sets'] is List) ? (e['sets'] as List).length.toDouble() : 0.0;
+          addDone(name, sets);
+        }
+
+        if (type == 'Circuito') {
+          final rounds = (e['rounds'] is List) ? (e['rounds'] as List) : const [];
+          if (rounds.isEmpty) continue;
+
+          // contar 1 por ronda por ejercicio
+          final Map<String, int> count = {};
+          for (final r in rounds) {
+            if (r is! Map) continue;
+            final rm = Map<String, dynamic>.from(r);
+            final exs = (rm['exercises'] is List) ? (rm['exercises'] as List) : const [];
+            for (final ex in exs) {
+              if (ex is! Map) continue;
+              final exm = Map<String, dynamic>.from(ex);
+              final name = normalizeExerciseName(exm['exercise']);
+              if (name.isEmpty) continue;
+              final k = _norm(name);
+              count[k] = (count[k] ?? 0) + 1;
+            }
+          }
+          count.forEach((k, v) => addDone(k, v.toDouble()));
+        }
+
+        if (type == 'Tabata') {
+          final rounds = (e['rounds'] is num) ? (e['rounds'] as num).toDouble() : 1.0;
+          final exs = (e['exercises'] is List) ? (e['exercises'] as List) : const [];
+          for (final ex in exs) {
+            if (ex is! Map) continue;
+            final exm = Map<String, dynamic>.from(ex);
+            final name = normalizeExerciseName(exm['exercise']);
+            addDone(name, rounds); // si quieres 1 en vez de rounds -> 1.0
+          }
+        }
+      }
+    }
+
+    // =========================
+    // 3) Asignación “bolsa semanal” -> días planificados
+    //    (cumple día1 aunque lo hayas hecho otro día)
+    // =========================
+    final remaining = Map<String, double>.from(doneWeekByKey);
+
+    // Ordenar días
+    final dayKeys = plannedByDay.keys.toList()..sort();
+
+    // dayResults[day] = items con achieved/missing + bloque
+    final Map<String, List<_DayResultItem>> dayResults = {};
+
+    double totalPlanned = 0;
+    double totalAchieved = 0;
+
+    for (final day in dayKeys) {
+      final items = plannedByDay[day]!;
+      final results = <_DayResultItem>[];
+
+      // agrupar por (exerciseKey + blockLabel) para que el bloque aparezca bien
+      for (final it in items) {
+        totalPlanned += it.plannedVol;
+
+        final avail = remaining[it.key] ?? 0.0;
+        final achieved = (avail >= it.plannedVol) ? it.plannedVol : avail;
+
+        remaining[it.key] = (avail - achieved).clamp(0, double.infinity);
+        totalAchieved += achieved;
+
+        results.add(_DayResultItem(planned: it, achieved: achieved));
+      }
+
+      // ordenar: primero lo que falta
+      results.sort((a, b) {
+        final ma = a.missing;
+        final mb = b.missing;
+        if (ma == 0 && mb > 0) return 1;
+        if (ma > 0 && mb == 0) return -1;
+        return a.planned.name.compareTo(b.planned.name);
+      });
+
+      dayResults[day] = results;
+    }
+
+    // Extras (lo que sobró en la bolsa semanal)
+    final extraTotal = remaining.values.fold<double>(0.0, (s, v) => s + v);
+
+    final percent = totalPlanned == 0 ? 0.0 : (totalAchieved / totalPlanned);
+
+    // cerrar loading
+    if (mounted) Navigator.pop(context);
+    if (!mounted) return;
+
+    // =========================
+    // 4) UI (dialog con secciones por día)
+    // =========================
+    // Construir extras para la pestaña ➕
+final extrasList = remaining.entries
+    .where((e) => e.value > 0)
+    .map((e) => {
+          'key': e.key,
+          'name': e.key.startsWith('name:')
+              ? e.key.substring(5)
+              : e.key,
+          'volume': e.value,
+        })
+    .toList()
+  ..sort((a, b) => (b['volume'] as double).compareTo(a['volume'] as double));
+
+// Día seleccionado por defecto: primer día con planificación, o lunes
+String initialDay = dayKeys.isNotEmpty ? dayKeys.first : _dayKey(startOfWeek);
+String selectedDayKey = dayKeys.isNotEmpty ? dayKeys.first : _dayKey(startOfWeek);
+
+showDialog(
+  context: context,
+  builder: (_) {
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: ConstrainedBox(
+  constraints: BoxConstraints(
+    maxWidth: 900,
+    maxHeight: MediaQuery.of(context).size.height * 0.90, // ✅ evita overflow
+  ),
+  child: StatefulBuilder(
+          builder: (context, setLocal) {
+
+            List<_DayResultItem> dayItems() =>
+                (dayResults[selectedDayKey] ?? const []);
+
+            List<_DayResultItem> okItems() =>
+                dayItems().where((x) => x.missing <= 0).toList();
+
+            List<_DayResultItem> missingItems() =>
+                dayItems().where((x) => x.missing > 0).toList();
+
+            // contadores del día (para mostrar en subtitle si quieres)
+            double plannedDayVol(List<_DayResultItem> items) =>
+                items.fold(0, (s, r) => s + r.planned.plannedVol);
+            double achievedDayVol(List<_DayResultItem> items) =>
+                items.fold(0, (s, r) => s + r.achieved);
+
+            final dayPlanned = plannedDayVol(dayItems());
+            final dayAchieved = achievedDayVol(dayItems());
+            final dayMissing = (dayPlanned - dayAchieved).clamp(0, double.infinity);
+
+            return DefaultTabController(
+              length: 3,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      _blockIcon(block['type']),
-                      size: 18,
-                      color: Theme.of(context).colorScheme.primary,
+                    // =======================
+                    // HEADER (TÍTULO + DROPDOWN DÍA)
+                    // =======================
+                    Wrap(
+  alignment: WrapAlignment.spaceBetween,
+  crossAxisAlignment: WrapCrossAlignment.center,
+  runSpacing: 8,
+  children: [
+    ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 560),
+      child: Text(
+        "Semana (${_dayKey(startOfWeek)} → ${_dayKey(endOfWeek.subtract(const Duration(days: 1)))})",
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        overflow: TextOverflow.ellipsis,
+      ),
+    ),
+
+    DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: selectedDayKey,
+        isDense: true,
+        items: (dayKeys.isNotEmpty ? dayKeys : [initialDay])
+            .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+            .toList(),
+        onChanged: (v) {
+          if (v == null) return;
+          setLocal(() {
+            selectedDayKey = v;
+            initialDay = v;
+          });
+        },
+      ),
+    ),
+  ],
+),
+
+                    const SizedBox(height: 6),
+
+                    // pequeña línea resumen del día seleccionado
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Día: Plan ${dayPlanned.toStringAsFixed(0)} • Hecho ${dayAchieved.toStringAsFixed(0)} • Falta ${dayMissing.toStringAsFixed(0)}",
+                        style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                      ),
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      _blockTitle(block),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
+
+                    const SizedBox(height: 12),
+
+                    // =======================
+                    // MÉTRICAS ARRIBA EN 1 FILA (SCROLL HORIZONTAL)
+                    // =======================
+                    SizedBox(
+                      height: 58,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          SizedBox(
+                            width: 210,
+                            child: _MetricTile(
+                              label: "Consecución (volumen)",
+                              value: "${(percent * 100).toStringAsFixed(0)}%",
+                              icon: Icons.percent,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 210,
+                            child: _MetricTile(
+                              label: "Vol. planificado",
+                              value: totalPlanned.toStringAsFixed(0),
+                              icon: Icons.event_note,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 210,
+                            child: _MetricTile(
+                              label: "Vol. logrado (del plan)",
+                              value: totalAchieved.toStringAsFixed(0),
+                              icon: Icons.check_circle,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 210,
+                            child: _MetricTile(
+                              label: "Extras semana",
+                              value: extraTotal.toStringAsFixed(0),
+                              icon: Icons.add_task,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    // =======================
+                    // TABS
+                    // =======================
+                    TabBar(
+                      tabs: [
+                        Tab(text: "OK (${okItems().length})"),
+                        Tab(text: "Falta (${missingItems().length})"),
+                        Tab(text: "Extras (${extrasList.length})"),
+                      ],
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // =======================
+                    // TAB CONTENT
+                    // =======================
+                    Expanded(
+  child: TabBarView(
+    children: [
+                          // ========= TAB OK =========
+                          _buildDayList(
+                            context,
+                            items: okItems(),
+                            emptyText: "Nada OK para este día (o no hay planificación).",
+                          ),
+
+                          // ========= TAB FALTA =========
+                          _buildDayList(
+                            context,
+                            items: missingItems(),
+                            emptyText: "Nada pendiente 🎉",
+                            showMissing: true,
+                          ),
+
+                          // ========= TAB EXTRAS =========
+                          _buildExtrasList(
+                            context,
+                            extrasList: extrasList,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text("Cerrar"),
                       ),
                     ),
                   ],
                 ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  },
+);
+  } catch (e) {
+    if (mounted) Navigator.pop(context);
+    if (!mounted) return;
 
-                const SizedBox(height: 10),
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Error"),
+        content: Text("No pude generar la revisión semanal.\n\n$e"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-                // =============================
-                // CONTENEDOR EJERCICIOS
-                // =============================
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color:
-                        Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .primary,
-                      width: 1.2,
-                    ),
-                  ),
-                  child: Column(
-                    children: exercises
-                        .map((e) => _planningExerciseRow(e))
-                        .toList(),
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-      ],
-    ),
+Widget _buildDayList(
+  BuildContext context, {
+  required List<_DayResultItem> items,
+  required String emptyText,
+  bool showMissing = false,
+}) {
+  if (items.isEmpty) {
+    return Center(
+      child: Text(
+        emptyText,
+        style: TextStyle(color: Colors.grey.shade700),
+      ),
+    );
+  }
+
+  return ListView.separated(
+    itemCount: items.length,
+    separatorBuilder: (_, __) => Divider(color: Colors.grey.shade300, height: 1),
+    itemBuilder: (_, i) {
+      final r = items[i];
+      final missing = r.missing;
+
+      return ListTile(
+        dense: true,
+        leading: Icon(
+          showMissing ? Icons.cancel_outlined : Icons.check_circle_outline,
+        ),
+        title: Text(r.planned.name),
+        subtitle: Text(
+          "${r.planned.blockLabel}\n"
+          "Plan: ${r.planned.plannedVol.toStringAsFixed(0)} • "
+          "Hecho: ${r.achieved.toStringAsFixed(0)}"
+          "${showMissing ? " • Falta: ${missing.toStringAsFixed(0)}" : ""}",
+        ),
+        isThreeLine: true,
+      );
+    },
   );
 }
 
-Widget _planningExerciseRow(Map<String, dynamic> e) {
-  final bool perSide = e['perSide'] == true;
-  final num weight = (e['weight'] ?? 0);
-
-  String mainValue = "";
-
-  // 🔥 SERIES
-  if (e['series'] != null && e['reps'] != null) {
-    mainValue = "${e['series']}×${e['reps']} reps";
+Widget _buildExtrasList(
+  BuildContext context, {
+  required List<Map<String, dynamic>> extrasList,
+}) {
+  if (extrasList.isEmpty) {
+    return Center(
+      child: Text(
+        "No hay extras esta semana.",
+        style: TextStyle(color: Colors.grey.shade700),
+      ),
+    );
   }
 
-  // 🔥 TIEMPO / REPS dinámico
-  else if (e['value'] != null && e['valueType'] != null) {
-    mainValue = e['valueType'] == "time"
-        ? "${e['value']} s"
-        : "${e['value']} reps";
-  }
+  return ListView.separated(
+    itemCount: extrasList.length,
+    separatorBuilder: (_, __) => Divider(color: Colors.grey.shade300, height: 1),
+    itemBuilder: (_, i) {
+      final e = extrasList[i];
+      final name = (e['name'] ?? '').toString();
+      final vol = (e['volume'] as double);
 
-  final String sideLabel = perSide ? " · por lado" : "";
-  final String weightLabel =
-      weight > 0 ? " · ${weight}kg" : "";
-
-  final String rightText =
-      [mainValue, sideLabel, weightLabel]
-          .where((s) => s.isNotEmpty)
-          .join("");
-
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
-    child: Row(
-      children: [
-        const Icon(
-          Icons.play_arrow,
-          size: 16,
-          color: Colors.grey,
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            e['name'] ?? '',
-            style: const TextStyle(fontSize: 14),
-          ),
-        ),
-        Text(
-          rightText,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.grey,
-          ),
-        ),
-      ],
-    ),
+      return ListTile(
+        dense: true,
+        leading: const Icon(Icons.add_task),
+        title: Text(name),
+        subtitle: Text("Volumen extra: ${vol.toStringAsFixed(0)}"),
+      );
+    },
   );
 }
 
@@ -475,6 +987,8 @@ Widget _planningExerciseRow(Map<String, dynamic> e) {
         body: Center(child: CircularProgressIndicator()),
       );
     }
+
+    final d = _selectedDay!;
 
     return Scaffold(
       appBar: AppBar(
@@ -526,25 +1040,43 @@ Widget _planningExerciseRow(Map<String, dynamic> e) {
       );
     },
   ),
+  IconButton(
+  icon: const Icon(Icons.fact_check),
+  tooltip: "Revisión semanal",
+  onPressed: () async {
+  if (selectedAthleteId == null) return;
+  await _reviewWeekDetailedByDay(); // 👈
+},
+),
 ],
 
 ),
       body: Column(
         children: [
           TableCalendar(
-            firstDay: DateTime.utc(2020),
-            lastDay: DateTime.utc(2030),
-            focusedDay: _focusedDay,
-            selectedDayPredicate: (day) =>
-                isSameDay(_selectedDay, day),
-            onDaySelected: (selected, focused) {
-              setState(() {
-                _selectedDay = selected;
-                _focusedDay = focused;
-              });
-              _loadPlannedForDay(selected);
-            },
-          ),
+  firstDay: DateTime.utc(2020),
+  lastDay: DateTime.utc(2030),
+  focusedDay: _focusedDay,
+
+  // 👇 ESTO AGREGA
+  startingDayOfWeek: StartingDayOfWeek.monday,
+
+  selectedDayPredicate: (day) =>
+      isSameDay(_selectedDay, day),
+
+  onDaySelected: (selected, focused) {
+  final normalized = _normalizeDayLocal(selected);
+  
+
+  setState(() {
+    _selectedDay = normalized;
+    _focusedDay = focused;
+  });
+
+  _loadPlannedForDay(normalized);
+},
+),
+
           const SizedBox(height: 12),
           Expanded(
   child: Padding(
@@ -552,6 +1084,7 @@ Widget _planningExerciseRow(Map<String, dynamic> e) {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        
 
         // 🔥 Día seleccionado visible
         Text(
@@ -563,14 +1096,14 @@ Widget _planningExerciseRow(Map<String, dynamic> e) {
         ),
 
         const SizedBox(height: 4),
+        
 
-        Text(
-          "${_selectedDay!.toLocal().toString().split(' ')[0]}",
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        
+Text(
+  "${d.year.toString().padLeft(4,'0')}-"
+  "${d.month.toString().padLeft(2,'0')}-"
+  "${d.day.toString().padLeft(2,'0')}",
+),
 
         const SizedBox(height: 16),
 
@@ -662,9 +1195,15 @@ Widget _planningExerciseRow(Map<String, dynamic> e) {
           // CONTENIDO EXPANDIDO
           // =========================
           if (isExpanded)
-            _buildExpandedRoutine(
-              _routineCache[w['routineId']]!,
-            ),
+  Padding(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+    child: RoutineView(
+      routine: _routineCache[w['routineId']]!.data() 
+          as Map<String, dynamic>,
+      compact: true, // 👈 importante para Planning
+    ),
+  ),
+
         ],
       ),
     );

@@ -6,6 +6,8 @@ import '../models/muscle_catalog.dart';
 import '../widgets/body_heatmap.dart';
 import 'my_workouts_screen.dart';
 import 'fatigue_audit_screen.dart';
+import '../services/fatigue_service.dart';
+
 
 import '../services/fatigue_recalculation_service.dart';
 
@@ -62,27 +64,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
 
-    // 🔥 1) leer estado latest (la “última tabla” persistida)
-    final latestStateSnap = await userRef
-        .collection('fatigue_state')
-        .doc('latest')
-        .get();
-
-    heatmap.clear();
-
-    if (latestStateSnap.exists) {
-      final data = latestStateSnap.data()!;
-      final fatigueMap = Map<String, dynamic>.from(data['fatigue'] ?? {});
-
-      for (final e in fatigueMap.entries) {
-        // ✅ decodificación estricta, sin abs fallback
-        final matches = Muscle.values.where((m) => m.name == e.key);
-        if (matches.isEmpty) continue;
-        final muscle = matches.first;
-
-        heatmap[muscle] = (e.value as num).toDouble();
-      }
-    }
+    
 
     // 🔥 2) leer auditoría persistida
     final auditSnap = await userRef
@@ -95,6 +77,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .map((d) => FatigueRecalculationStep.fromJson(d.data()))
           .toList();
     }
+
+    _rebuildHeatmapFromSteps();
 
     // 🔹 FECHA ÚLTIMO CÁLCULO
     final userDoc = await userRef.get();
@@ -112,6 +96,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
+  
+
   Future<void> _recalculateFatigue() async {
     setState(() => calculatingFatigue = true);
 
@@ -127,13 +113,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final now = DateTime.now(); // 👈 NUEVO
 
     setState(() {
-      heatmap
-        ..clear()
-        ..addAll(result.finalFatigue);
+  lastAuditSteps = result.steps;
+_rebuildHeatmapFromSteps();
 
-      lastFatigueCalculation = now; // 👈 CLAVE
-      calculatingFatigue = false;
-    });
+  // 🔥 ACTUALIZAR AUDITORÍA TAMBIÉN
+  lastAuditSteps = result.steps;
+
+  lastFatigueCalculation = now;
+  calculatingFatigue = false;
+});
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -142,6 +130,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
+ void _rebuildHeatmapFromSteps() {
+  if (lastAuditSteps == null || lastAuditSteps!.isEmpty) {
+    heatmap.clear();
+    return;
+  }
+
+  final sorted = [...lastAuditSteps!]
+    ..sort((a, b) => a.workoutDate.compareTo(b.workoutDate));
+
+  final start = sorted.first.workoutDate;
+
+  final Map<Muscle, double> fatigue = {
+    for (final m in Muscle.values) m: 0.0,
+  };
+
+  final Map<Muscle, DateTime> lastUpdate = {
+    for (final m in Muscle.values) m: start,
+  };
+
+  for (final step in sorted) {
+    final t = step.workoutDate;
+
+    for (final m in Muscle.values) {
+      // recuperar hasta workout
+      fatigue[m] = FatigueService.recoverToNow(
+        fatigue: fatigue[m]!,
+        lastUpdate: lastUpdate[m]!,
+        now: t,
+      );
+
+      // aplicar carga
+      final load = step.loadApplied[m] ?? 0;
+      fatigue[m] = fatigue[m]! + load;
+
+      lastUpdate[m] = t;
+    }
+  }
+
+  // 🔥 recuperar hasta ahora SOLO UNA VEZ
+  final now = DateTime.now();
+
+  for (final m in Muscle.values) {
+    fatigue[m] = FatigueService.recoverToNow(
+      fatigue: fatigue[m]!,
+      lastUpdate: lastUpdate[m]!,
+      now: now,
+    );
+  }
+
+  heatmap
+    ..clear()
+    ..addAll(fatigue);
+}
 
   // ======================================================
   // 🖥 UI

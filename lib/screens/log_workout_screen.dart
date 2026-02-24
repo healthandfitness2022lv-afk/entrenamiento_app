@@ -8,6 +8,29 @@ import '../services/tabata_timer_service.dart';
 import '../services/workout_load_service.dart';
 import 'add_workout_screen.dart';
 import '../services/workout_suggestion_service.dart';
+import '/widgets/series_block_widget.dart';
+import '../widgets/circuit_block_widget.dart';
+import '../widgets/tabata_block_widget.dart';
+import 'dart:math';
+
+class _WorkoutBuildResult {
+  final List<Map<String, dynamic>> performed;
+  final List<WorkoutSet> workoutSets;
+  final DateTime startedAt;
+  final DateTime finishedAt;
+  final int durationMinutes;
+
+  _WorkoutBuildResult({
+    required this.performed,
+    required this.workoutSets,
+    required this.startedAt,
+    required this.finishedAt,
+    required this.durationMinutes,
+  });
+}
+
+
+
 
 class LogWorkoutScreen extends StatefulWidget {
   final Map<String, dynamic>? existingWorkout;
@@ -27,19 +50,22 @@ class LogWorkoutScreen extends StatefulWidget {
 class _LogWorkoutScreenState extends State<LogWorkoutScreen> {
   Map<String, dynamic>? routine;
   bool loading = true;
-  int tabataElapsed = 0;
-  int tabataTotal = 0;
+
   final Map<String, double?> _suggestedWeightCache = {};
   final Map<String, List<TextEditingController>> seriesRepsCtrl = {};
 final Map<String, List<TextEditingController>> seriesWeightCtrl = {};
 final Map<int, Map<int, Map<String, ValueNotifier<bool>>>> circuitoDone = {};
-final Set<int> startedTabataBlocks = {};
 DateTime? workoutStartedAt;
 final Map<String, int?> _suggestedRepsCache = {};
   final Map<int, bool> expandedBlocks = {};
   final Map<int, int> circuitoRound = {};
   List<Map<String, dynamic>> availableRoutines = [];
   bool get isEdit => widget.workoutRef != null;
+  // 🔥 DATOS ORIGINALES (solo para edición)
+DateTime? _originalStartedAt;
+DateTime? _originalFinishedAt;
+int? _originalDurationMinutes;
+final Map<int, Map<String, bool>> circuitoPerSide = {};
 
   List<Map<String, dynamic>> availableExercisesCatalog = [];
 
@@ -59,14 +85,6 @@ final Map<int, Map<int, Map<String, int>>> circuitoRpePorRonda = {};
 
   bool _saving = false;
   String _savingStep = "";
-  bool tabataRunning = false;
-
-  int tabataRound = 0;
-  String tabataExercise = "";
-  TabataPhase? tabataPhase;
-  final Set<int> completedTabataBlocks = {};
-  final Map<int, Map<String, int>> tabataRpeResults = {};
-
   // series
   final Map<String, List<Map<String, dynamic>>> seriesData = {};
 
@@ -193,9 +211,8 @@ void _loadSuggestionIfNeeded(
 ) async {
   final key = "$exercise-$reps";
 
-  if (_suggestedWeightCache.containsKey(key)) return;
-
   final uid = FirebaseAuth.instance.currentUser!.uid;
+
   final value = await WorkoutSuggestionService.suggestWeightForReps(
     userId: uid,
     exercise: exercise,
@@ -248,15 +265,45 @@ Future<void> _loadExerciseCatalog() async {
       .orderBy('name')
       .get();
 
-  availableExercisesCatalog =
-      snap.docs.map((d) => d.data()).toList();
+  availableExercisesCatalog = snap.docs.map((d) {
+    return {
+      'id': d.id,
+      ...d.data(),
+    };
+  }).toList();
+}
+
+Map<String, dynamic>? _getExerciseFromCatalog(String name) {
+  try {
+    return availableExercisesCatalog.firstWhere(
+      (e) => normalizeExerciseName(e['name']) == name,
+    );
+  } catch (_) {
+    return null;
+  }
 }
 
 
 
+
 void _loadWorkoutForEdit() {
+  
   final workout = widget.existingWorkout!;
-  final performed = List<Map<String, dynamic>>.from(workout['performed']);
+
+  // 🔥 Guardar tiempos originales
+_originalStartedAt =
+    (workout['startedAt'] as Timestamp?)?.toDate();
+
+_originalFinishedAt =
+    (workout['finishedAt'] as Timestamp?)?.toDate();
+
+_originalDurationMinutes =
+    (workout['durationMinutes'] as num?)?.toInt();
+
+  
+  final performed = (workout['performed'] as List<dynamic>? ?? [])
+    .map((e) => Map<String, dynamic>.from(e))
+    .toList();
 
   routine = {
     'id': workout['routineId'],
@@ -275,31 +322,49 @@ void _loadWorkoutForEdit() {
 
 
 void _hydrateFromPerformed(List<Map<String, dynamic>> performed) {
-  int circuitBlockCursor = 0; // 👈 DECLARACIÓN LOCAL CORRECTA
+  int circuitBlockCursor = 0;
 
-  for (final e in performed) {
+for (final e in performed) {
+if (e['type'] == 'Series') {
 
-    // ===================== SERIES (YA LO TENÍAS) =====================
-    if (e['type'] == 'Series') {
-      final name = e['exercise'];
-      final sets = List<Map<String, dynamic>>.from(e['sets']);
+  final int blockIndex =
+      (e['blockIndex'] as num?)?.toInt() ?? 0;
 
-      final key = seriesData.keys.firstWhere(
-        (k) => k.endsWith(name),
-        orElse: () => '',
-      );
+  final List exercises =
+      (e['exercises'] as List?) ?? [];
 
-      if (key.isEmpty) continue;
+  for (final ex in exercises) {
 
-      for (int i = 0; i < sets.length && i < seriesData[key]!.length; i++) {
-        seriesData[key]![i]['reps'] = sets[i]['reps'];
-        seriesData[key]![i]['weight'] = sets[i]['weight'];
-        seriesData[key]![i]['rpe'] = sets[i]['rpe'];
-        seriesData[key]![i]['done'] = true;
-      }
+    final String name =
+        normalizeExerciseName(ex['exercise']);
+
+    final sets =
+        (ex['sets'] as List<dynamic>? ?? [])
+            .map((x) => Map<String, dynamic>.from(x))
+            .toList();
+
+    final key = "$blockIndex-$name";
+    if (!seriesData.containsKey(key)) continue;
+
+    for (int i = 0;
+        i < sets.length &&
+        i < seriesData[key]!.length;
+        i++) {
+
+      seriesData[key]![i]['reps'] = sets[i]['reps'];
+      seriesData[key]![i]['weight'] = sets[i]['weight'];
+      seriesData[key]![i]['rpe'] = sets[i]['rpe'];
+      seriesData[key]![i]['done'] = true;
+
+      seriesRepsCtrl[key]![i].text =
+          sets[i]['reps']?.toString() ?? '';
+
+      seriesWeightCtrl[key]![i].text =
+          sets[i]['weight']?.toString() ?? '';
     }
+  }
+}
 
-    // ===================== CIRCUITO =====================
     // ================= CIRCUITO (FIX REAL) =================
     if (e['type'] == 'Circuito') {
       // 🔥 buscar el bloque Circuito N° circuitBlockCursor
@@ -315,34 +380,40 @@ void _hydrateFromPerformed(List<Map<String, dynamic>> performed) {
       final List rounds = e['rounds'] ?? [];
 
       circuitoRound[blockIndex] = rounds.length;
-      circuitoReps[blockIndex] = {};
-      circuitoWeight[blockIndex] = {};
-      circuitoRpePorRonda[blockIndex] = {};
-      circuitoDone[blockIndex] = {};
+circuitoReps[blockIndex] = {};
+circuitoWeight[blockIndex] = {};
+circuitoRpePorRonda[blockIndex] = {};
+circuitoDone[blockIndex] = {};
+circuitoPerSide[blockIndex] = {};
 
       for (final r in rounds) {
         final int round = r['round'];
 
         circuitoReps[blockIndex]![round] = {};
-        circuitoWeight[blockIndex]![round] = {};
-        circuitoRpePorRonda[blockIndex]![round] = {};
-        circuitoDone[blockIndex]![round] = {};
+circuitoWeight[blockIndex]![round] = {};
+circuitoRpePorRonda[blockIndex]![round] = {};
+circuitoDone[blockIndex]![round] = {};
+circuitoPerSide.putIfAbsent(blockIndex, () => {});
+
 
         for (final ex in r['exercises']) {
-          final String name = normalizeExerciseName(ex['exercise']);
+  final String name = normalizeExerciseName(ex['exercise']);
 
-          circuitoReps[blockIndex]![round]![name] =
-              TextEditingController(text: ex['reps']?.toString() ?? '1');
+  circuitoReps[blockIndex]![round]![name] =
+      TextEditingController(text: ex['reps']?.toString() ?? '1');
 
-          circuitoWeight[blockIndex]![round]![name] =
-              TextEditingController(text: ex['weight']?.toString() ?? '');
+  circuitoWeight[blockIndex]![round]![name] =
+      TextEditingController(text: ex['weight']?.toString() ?? '');
 
-          circuitoRpePorRonda[blockIndex]![round]![name] =
-              ex['rpe'] ?? 5;
+  circuitoRpePorRonda[blockIndex]![round]![name] =
+      ex['rpe'] ?? 5;
 
-          circuitoDone[blockIndex]![round]![name] =
-              ValueNotifier(true);
-        }
+  circuitoDone[blockIndex]![round]![name] =
+      ValueNotifier(true);
+
+  circuitoPerSide[blockIndex]![name] =
+    ex['perSide'] == true;
+}
       }
     }
 
@@ -351,13 +422,14 @@ void _hydrateFromPerformed(List<Map<String, dynamic>> performed) {
       final int blockIndex = e['blockIndex'];
       final List exercises = e['exercises'] ?? [];
 
-      startedTabataBlocks.add(blockIndex);
-      completedTabataBlocks.add(blockIndex);
+      tabataTimer.markBlockHydrated(
+  blockIndex,
+  {
+    for (final ex in exercises)
+      normalizeExerciseName(ex['exercise']): ex['rpe'],
+  },
+);
 
-      tabataRpeResults[blockIndex] = {
-        for (final ex in exercises)
-          normalizeExerciseName(ex['exercise']): ex['rpe'],
-      };
     }
   }
 }
@@ -366,114 +438,103 @@ void _hydrateFromPerformed(List<Map<String, dynamic>> performed) {
 List<Map<String, dynamic>> _rebuildBlocksFromPerformed(
   List<Map<String, dynamic>> performed,
 ) {
-  final List<Map<String, dynamic>> blocks = [];
-
-  int? seriesBlockIndex;
-  final List<Map<String, dynamic>> seriesExercises = [];
-
-  void ensureSeriesBlockAtCurrentPosition() {
-    if (seriesBlockIndex != null) return;
-    seriesBlockIndex = blocks.length;
-    blocks.add({
-      'type': 'Series',
-      'exercises': <Map<String, dynamic>>[],
-    });
-  }
+  final Map<int, Map<String, dynamic>> blocksMap = {};
 
   for (final e in performed) {
-    final type = e['type'];
+    final String type = (e['type'] ?? '').toString();
+    final int blockIndex = (e['blockIndex'] as num?)?.toInt() ?? 0;
 
-    // ================= SERIES (AGRUPADO EN 1 SOLO BLOQUE) =================
+    blocksMap.putIfAbsent(blockIndex, () {
+      return {
+        'type': type,
+        'title': e['blockTitle'],
+        'exercises': <Map<String, dynamic>>[],
+      };
+    });
+
+    // ================= SERIES =================
     if (type == 'Series') {
-      ensureSeriesBlockAtCurrentPosition();
 
-      final String name = normalizeExerciseName(e['exercise']);
-      final List<Map<String, dynamic>> sets =
-          List<Map<String, dynamic>>.from(e['sets'] ?? const []);
+  final List exList =
+      (e['exercises'] as List?) ?? const [];
 
-      if (name.isEmpty || sets.isEmpty) continue;
+  for (final ex in exList) {
+    if (ex is! Map) continue;
 
-      // Evita duplicar el mismo ejercicio si aparece más de una vez
-      if (seriesExercises.any((x) => normalizeExerciseName(x['name']) == name)) {
-        continue;
-      }
+    final String name =
+        normalizeExerciseName(ex['exercise']);
 
-      final first = sets.first;
-      final String valueType = (first['valueType'] ?? 'reps').toString();
+    final List sets =
+        (ex['sets'] as List?) ?? const [];
 
-      final int baseValue = valueType == 'time'
-          ? (first['value'] is int ? first['value'] as int : int.tryParse("${first['value']}") ?? 0)
-          : (first['reps'] is int ? first['reps'] as int : int.tryParse("${first['reps']}") ?? 0);
+    if (name.isEmpty || sets.isEmpty) continue;
 
-      final dynamic w = first['weight'];
-      final double? weight = w == null
-          ? null
-          : (w is num ? w.toDouble() : double.tryParse("$w"));
-
-      seriesExercises.add({
-        'name': name,
-        'series': sets.length,
-        'valueType': valueType,
-        'value': baseValue,
-        'reps': valueType == 'reps' ? baseValue : null,
-        if (weight != null) 'weight': weight,
-      });
-
-      continue;
-    }
+    blocksMap[blockIndex]!['exercises'].add({
+      'name': name,
+      'series': sets.length,
+      'reps': (sets.first as Map)['reps'],
+      'valueType': 'reps',
+      'weight': (sets.first as Map)['weight'],
+      'perSide': ex['perSide'] == true,
+    });
+  }
+}
 
     // ================= CIRCUITO =================
     if (type == 'Circuito') {
-      final List exercises = [];
-
-      final roundsRaw = (e['rounds'] as List?) ?? const [];
-      for (final r in roundsRaw) {
-        final exs = (r['exercises'] as List?) ?? const [];
-        for (final ex in exs) {
-          final exName = normalizeExerciseName(ex['exercise']);
-          if (exName.isEmpty) continue;
-
-          if (!exercises.any((x) => normalizeExerciseName(x['name']) == exName)) {
-            exercises.add({
-              'name': exName,
-              'reps': ex['reps'] ?? 1,
-              'perSide': ex['perSide'] == true,
-            });
-          }
-        }
-      }
-
-      blocks.add({
+      blocksMap[blockIndex] = {
         'type': 'Circuito',
-        'rounds': roundsRaw.length,
-        'exercises': exercises,
-      });
-      continue;
+        'title': e['blockTitle'],
+        'rounds': (e['rounds'] as List?)?.length ?? 1,
+        'exercises': _extractCircuitExercises(e),
+      };
     }
 
     // ================= TABATA =================
     if (type == 'Tabata') {
-      final exs = (e['exercises'] as List?) ?? const [];
-      blocks.add({
+      blocksMap[blockIndex] = {
         'type': 'Tabata',
+        'title': e['blockTitle'],
         'work': e['work'],
         'rest': e['rest'],
         'rounds': e['rounds'],
-        'exercises': exs
-            .map((x) => {'name': normalizeExerciseName(x['exercise'] ?? x['name'])})
-            .toList(),
-      });
-      continue;
+        'exercises': (e['exercises'] as List?)
+                ?.map((x) => {'name': (x as Map)['exercise']})
+                .toList() ??
+            [],
+      };
     }
   }
 
-  // Inyecta los ejercicios Series al bloque agrupado
-  if (seriesBlockIndex != null) {
-    blocks[seriesBlockIndex!]['exercises'] = seriesExercises;
+  final sortedKeys = blocksMap.keys.toList()..sort();
+  return sortedKeys.map((k) => blocksMap[k]!).toList();
+}
+
+List<Map<String, dynamic>> _extractCircuitExercises(
+  Map<String, dynamic> e,
+) {
+  final List<Map<String, dynamic>> exercises = [];
+
+  final roundsRaw = (e['rounds'] as List?) ?? const [];
+
+  for (final r in roundsRaw) {
+    final exs = (r['exercises'] as List?) ?? const [];
+
+    for (final ex in exs) {
+      final name = normalizeExerciseName(ex['exercise']);
+
+      if (!exercises.any((x) => x['name'] == name)) {
+        exercises.add({
+          'name': name,
+          'reps': ex['reps'] ?? 1,
+        });
+      }
+    }
   }
 
-  return blocks;
+  return exercises;
 }
+
 
   // ================= HELPERS =================
 
@@ -594,13 +655,6 @@ List<Map<String, dynamic>> _rebuildBlocksFromPerformed(
 }
 
 
-  void _markTabataCompleted(int blockIndex, Map<String, int> rpeByExercise) {
-    setState(() {
-      completedTabataBlocks.add(blockIndex);
-      tabataRpeResults[blockIndex] = rpeByExercise;
-    });
-  }
-
   // ================= HEADER BLOQUE =================
 
   Widget _blockHeader(int index, Map<String, dynamic> block) {
@@ -653,179 +707,6 @@ List<Map<String, dynamic>> _rebuildBlocksFromPerformed(
     ),
   );
 }
-
-
-
-  // ================= CIRCUITO =================
-
- Widget _buildCircuitBlock(int index, Map<String, dynamic> block) {
-  if (!(expandedBlocks[index] ?? false)) return const SizedBox();
-
-  final int totalRounds = block['rounds'] ?? 1;
-  final int currentRound = circuitoRound[index] ?? 1;
-
-  circuitoWeight.putIfAbsent(index, () => {});
-  circuitoReps.putIfAbsent(index, () => {});
-  circuitoRpePorRonda.putIfAbsent(index, () => {});
-
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      for (int round = 1; round <= currentRound; round++) ...[
-        _circuitRoundCard(index, block, round, totalRounds),
-        const SizedBox(height: 16),
-      ],
-
-      if (currentRound < totalRounds)
-        Align(
-          alignment: Alignment.centerRight,
-          child: ElevatedButton.icon(
-            icon: const Icon(Icons.forward),
-            label: Text("Completar ronda ${currentRound + 1}"),
-            onPressed: () {
-              setState(() {
-                circuitoRound[index] = currentRound + 1;
-              });
-            },
-          ),
-        ),
-    ],
-  );
-}
-Widget _circuitRoundCard(
-  int blockIndex,
-  Map<String, dynamic> block,
-  int round,
-  int totalRounds,
-) {
-  circuitoWeight[blockIndex]!.putIfAbsent(round, () => {});
-  circuitoReps[blockIndex]!.putIfAbsent(round, () => {});
-  circuitoRpePorRonda[blockIndex]!.putIfAbsent(round, () => {});
-
-  return Card(
-    elevation: 2,
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Ronda $round / $totalRounds",
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-
-          for (final ex in block['exercises'])
-            _circuitExerciseRow(blockIndex, round, ex),
-        ],
-      ),
-    ),
-  );
-}
-Widget _circuitExerciseRow(
-  int blockIndex,
-  int round,
-  Map<String, dynamic> ex,
-) {
-  final String name = normalizeExerciseName(ex['name']);
-
-  circuitoReps[blockIndex]![round]!.putIfAbsent(
-    name,
-    () => TextEditingController(
-      text: (ex['reps'] ?? 1).toString(),
-    ),
-  );
-
-  circuitoWeight[blockIndex]![round]!.putIfAbsent(
-    name,
-    () => TextEditingController(
-      text: (ex['weight'] ?? 0).toString(),
-    ),
-  );
-
-  circuitoRpePorRonda[blockIndex]![round]!.putIfAbsent(name, () => 5);
-
-  circuitoDone.putIfAbsent(blockIndex, () => {});
-circuitoDone[blockIndex]!.putIfAbsent(round, () => {});
-circuitoDone[blockIndex]![round]!.putIfAbsent(
-  name,
-  () => ValueNotifier<bool>(false),
-);
-
-
-
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-      const SizedBox(height: 6),
-
-      Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: circuitoReps[blockIndex]![round]![name],
-              decoration: const InputDecoration(labelText: "Reps"),
-              keyboardType: TextInputType.number,
-            ),
-          ),
-          const SizedBox(width: 8),
-
-          Expanded(
-            child: TextField(
-              controller: circuitoWeight[blockIndex]![round]![name],
-              decoration: const InputDecoration(labelText: "Peso"),
-              keyboardType: TextInputType.number,
-            ),
-          ),
-          const SizedBox(width: 8),
-
-          DropdownButton<int>(
-            value: circuitoRpePorRonda[blockIndex]![round]![name],
-            items: List.generate(
-              10,
-              (i) => DropdownMenuItem(
-                value: i + 1,
-                child: Text("RPE ${i + 1}"),
-              ),
-            ),
-            onChanged: (v) {
-              setState(() {
-                circuitoRpePorRonda[blockIndex]![round]![name] = v!;
-              });
-            },
-          ),
-
-          ValueListenableBuilder<bool>(
-  valueListenable: circuitoDone[blockIndex]![round]![name]!,
-  builder: (_, checked, __) {
-    return Checkbox(
-  value: checked,
-  fillColor: MaterialStateProperty.resolveWith((states) {
-    if (states.contains(MaterialState.selected)) {
-      return Theme.of(context).colorScheme.primary; // 🟢 verde
-    }
-    return Colors.transparent; // ⬜ transparente
-  }),
-  checkColor: Colors.black,
-  side: const BorderSide(color: Colors.grey),
-  onChanged: (v) {
-    circuitoDone[blockIndex]![round]![name]!.value = v!;
-  },
-);
-
-  },
-),
-
-
-        ],
-      ),
-
-      const SizedBox(height: 12),
-    ],
-  );
-}
-
 
 Future<void> _addExerciseToSeries(int blockIndex) async {
   final block = await Navigator.push<Map<String, dynamic>>(
@@ -932,464 +813,26 @@ Future<void> _confirmDeleteExercise(
 }
 
 
-  // ================= SERIES =================
-
-  Widget _buildSeriesBlock(int index, Map<String, dynamic> block) {
-  if (!(expandedBlocks[index] ?? false)) return const SizedBox();
-
-
-  return Column(
-    children: [
-      // ================= EJERCICIOS =================
-      for (final ex in block['exercises'])
-  Builder(
-    builder: (_) {
-      final String name = normalizeExerciseName(ex['name']);
-      final String key = "$index-$name";
-
-      // 🛡️ PROTECCIÓN CRÍTICA
-      if (!seriesData.containsKey(key) ||
-    seriesData[key]!.isEmpty ||
-    !seriesRepsCtrl.containsKey(key) ||
-    !seriesWeightCtrl.containsKey(key)) {
-  return const SizedBox();
-}
-
-
-      final bool isTimeBased =
-          seriesData[key]![0]['valueType'] == 'time';
-
-            return Column(
-              children: [
-                const SizedBox(height: 12),
-
-                // ================= HEADER EJERCICIO =================
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          if (_getEquipment(ex) != null)
-                            Text(
-                              _getEquipment(ex)!,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          if (_isPerSide(ex))
-                            const Text(
-                              "Por lado",
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-
-                    IconButton(
-                      icon: const Icon(Icons.info_outline),
-                      onPressed: () => _showExerciseInfo(ex),
-                    ),IconButton(
-  icon: const Icon(Icons.close, size: 18),
-  tooltip: "Eliminar ejercicio",
-  onPressed: () => _confirmDeleteExercise(index, name),
-),
-
-
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-
-                // ================= TABLA SERIES =================
-                Table(
-                  columnWidths: const {
-                    0: FixedColumnWidth(50),
-                    1: FlexColumnWidth(),
-                    2: FlexColumnWidth(),
-                    3: FlexColumnWidth(),
-                    4: FixedColumnWidth(40),
-                  },
-                  children: [
-                    TableRow(
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.all(4),
-                          child: Text("Serie"),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.all(4),
-                          child: Text(isTimeBased ? "Tiempo (s)" : "Reps"),
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.all(4),
-                          child: Text("Peso"),
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.all(4),
-                          child: Text("RPE"),
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.all(4),
-                          child: Text("✔"),
-                        ),
-                      ],
-                    ),
-
-                    for (int i = 0; i < seriesData[key]!.length; i++)
-                      TableRow(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(4),
-                            child: Text("${i + 1}"),
-                          ),
-
-                          // REPS / TIEMPO
-                          Padding(
-                            padding: const EdgeInsets.all(4),
-                            child: TextField(
-  controller: seriesRepsCtrl[key]![i],
-  keyboardType: TextInputType.number,
-  textInputAction: TextInputAction.done, // 👈 para que salga "Done"
-  onChanged: (v) {
-    seriesData[key]![i]['reps'] = int.tryParse(v);
-  },
-  onSubmitted: (v) {
-    final reps = int.tryParse(v) ?? 0;
-    seriesData[key]![i]['reps'] = reps;
-
-    if (reps > 0) {
-      // no borres el del mismo reps, borra “todos” los de ese ejercicio:
-      _suggestedWeightCache.removeWhere((k, _) => k.startsWith("$name-"));
-
-      // dispara sugerencia con reps final
-      _loadSuggestionIfNeeded(name, reps);
-    }
-
-    // fuerza rebuild para que aparezca el texto "Sugerido..."
-    setState(() {});
-  },
-),
-
-
-                          ),
-
-                          // PESO
-                          Padding(
-  padding: const EdgeInsets.all(4),
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      // ================= PESO =================
-      TextField(
-        controller: seriesWeightCtrl[key]![i],
-        keyboardType: TextInputType.number,
-        onChanged: (v) {
-  seriesData[key]![i]['weight'] = int.tryParse(v) ?? 0;
-
-  // Limpia cache viejo de ese ejercicio
-  _suggestedRepsCache.removeWhere((k, _) => k.startsWith("$name-"));
-
-  setState(() {});
-},
-
-      ),
-      Builder(
-        builder: (context) {
-          final weightText = seriesWeightCtrl[key]![i].text;
-          final weight = double.tryParse(weightText);
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (weight != null && weight > 0)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: _suggestedRepsText(name, weight),
-                ),
-              // ================= SUGERENCIA =================
-              if (seriesData[key]![i]['reps'] != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: _suggestedWeightText(
-                    name,
-                    seriesData[key]![i]['reps'],
-                  ),
-                ),
-            ],
-          );
-        },
-      ),
-    ],
-  ),
-),
-
-
-                          // RPE
-                          Padding(
-                            padding: const EdgeInsets.all(4),
-                            child: DropdownButton<int>(
-                              value: seriesData[key]![i]['rpe'],
-                              items: List.generate(
-                                10,
-                                (r) => DropdownMenuItem(
-                                  value: r + 1,
-                                  child: Text("${r + 1}"),
-                                ),
-                              ),
-                              onChanged: (v) => setState(() {
-                                seriesData[key]![i]['rpe'] = v!;
-                              }),
-                            ),
-                          ),
-
-                          // DONE
-                          Padding(
-                            padding: const EdgeInsets.all(4),
-                            child: Checkbox(
-                              value: seriesData[key]![i]['done'],
-                              fillColor:
-                                  MaterialStateProperty.resolveWith((states) {
-                                if (states.contains(MaterialState.selected)) {
-                                  return Theme.of(context)
-                                      .colorScheme
-                                      .primary;
-                                }
-                                return Colors.transparent;
-                              }),
-                              checkColor: Colors.black,
-                              side: const BorderSide(color: Colors.grey),
-                              onChanged: (v) => setState(() {
-                                seriesData[key]![i]['done'] = v!;
-                              }),
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-
-                // ================= BOTONES SERIES +/- =================
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    IconButton(
-  icon: const Icon(Icons.remove_circle_outline),
-  onPressed: seriesData[key]!.length > 1
-      ? () {
-          setState(() {
-            seriesData[key]!.removeLast();
-            seriesRepsCtrl[key]!.removeLast();
-            seriesWeightCtrl[key]!.removeLast();
-          });
-        }
-      : null,
-),
-
-                    IconButton(
-  icon: const Icon(Icons.add_circle_outline),
-  onPressed: () {
-    setState(() {
-      final last = seriesData[key]!.last;
-
-      // 1️⃣ Agregar data
-      seriesData[key]!.add({
-        'valueType': last['valueType'],
-        'value': last['value'],
-        'reps': last['reps'],
-        'weight': last['weight'],
-        'rpe': last['rpe'],
-        'done': false,
-      });
-
-      // 2️⃣ Agregar controllers SINCRONIZADOS
-      seriesRepsCtrl[key]!.add(
-        TextEditingController(
-          text: last['reps']?.toString() ?? '',
-        ),
-      );
-
-      seriesWeightCtrl[key]!.add(
-        TextEditingController(
-          text: last['weight']?.toString() ?? '',
-        ),
-      );
-    });
-  },
-),
-
-                  ],
-                ),
-              ],
-            );
-          },
-        ),
-
-      const SizedBox(height: 16),
-
-      // ================= BOTÓN ÚNICO DEL BLOQUE =================
-      Align(
-        alignment: Alignment.centerRight,
-        child: TextButton.icon(
-          icon: const Icon(Icons.add),
-          label: const Text("Agregar ejercicio"),
-          onPressed: () => _addExerciseToSeries(index),
-        ),
-      ),
-    ],
-  );
-}
-
-
-  Widget _buildTabataBlock(int index, Map<String, dynamic> block) {
-  if (!(expandedBlocks[index] ?? false)) {
-    return const SizedBox();
-  }
-
-  final int work = block['work'];
-  final int rest = block['rest'];
-  final int rounds = block['rounds'];
-  final List exercises = block['exercises'];
-
-  final bool started = startedTabataBlocks.contains(index);
-  final bool completed = completedTabataBlocks.contains(index);
-  final Map<String, int>? rpeResults = tabataRpeResults[index];
-
-  return Card(
-    elevation: 2,
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "Tabata",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          Text("Trabajo: $work s · Descanso: $rest s · Rondas: $rounds"),
-
-          const SizedBox(height: 12),
-
-          // ================= EJERCICIOS + RPE =================
-          if (completed && rpeResults != null) ...[
-            const Text(
-              "Resultados:",
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-
-            for (final ex in exercises)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(ex['name']),
-                  Text(
-                    "RPE ${rpeResults[ex['name']] ?? '-'}",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orangeAccent,
-                    ),
-                  ),
-                ],
-              ),
-          ] else ...[
-            // 🔹 No ejecutado aún
-            ...exercises.map((e) => Text("• ${e['name']}")),
-          ],
-
-          const SizedBox(height: 16),
-
-          // ================= BOTÓN =================
-          Align(
-  alignment: Alignment.centerRight,
-  child: completed
-      ? OutlinedButton.icon(
-          icon: const Icon(Icons.replay),
-          label: const Text("Repetir Tabata"),
-          onPressed: () {
-            setState(() {
-              completedTabataBlocks.remove(index);
-              tabataRpeResults.remove(index);
-            });
-
-            _startTabata(blockIndex: index, block: block);
-          },
-        )
-      : ElevatedButton(
-  onPressed: () {
-  _startTabata(blockIndex: index, block: block);
-},
-
-  child: Text(started ? "Continuar Tabata" : "Iniciar Tabata"),
-),
-
-),
-        ]
-      ),
-    ),
-  );
-}
-
 
 
   void _startTabata({
-    required int blockIndex,
-    required Map<String, dynamic> block,
-  }) {
-      startedTabataBlocks.add(blockIndex); // 👈 CLAVE
+  required int blockIndex,
+  required Map<String, dynamic> block,
+}) {
+  tabataTimer.startBlock(
+    blockIndex: blockIndex,
+    workSeconds: block['work'],
+    restSeconds: block['rest'],
+    rounds: block['rounds'],
+    exercises: List<Map<String, dynamic>>.from(block['exercises']),
+  );
+}
 
-    setState(() {
-      tabataRunning = true;
-    });
-
-    tabataTimer.start(
-      workSeconds: block['work'],
-      restSeconds: block['rest'],
-      rounds: block['rounds'],
-      exercises: List<Map<String, dynamic>>.from(block['exercises']),
-
-      onTick: (round, exercise, phase, elapsed, total) {
-        if (!mounted) return; // 🔥 CLAVE
-        setState(() {
-          tabataRound = round;
-          tabataExercise = exercise['name'];
-          tabataPhase = phase;
-          tabataElapsed = elapsed;
-          tabataTotal = total;
-        });
-      },
-
-      onFinish: () {
-        if (!mounted) return;
-        setState(() {
-          tabataRunning = false;
-        });
-        _askTabataRpe(blockIndex, block);
-      },
-    );
-  }
 
 
 void _skipTabata() async {
   // 1️⃣ Detener timer
   tabataTimer.stop();
-
-  setState(() {
-    tabataRunning = false;
-  });
 
   // 2️⃣ Identificar bloque activo
   final int blockIndex = routine!['blocks']
@@ -1432,9 +875,12 @@ if (block['type'] == 'Circuito') {
   circuitoReps[i]![round] = {};
   circuitoRpePorRonda[i]![round] = {};
   circuitoDone[i]![round] = {};
+  circuitoPerSide[i] = {};
+  
 
   for (final ex in block['exercises']) {
     final String name = normalizeExerciseName(ex['name']);
+    circuitoPerSide[i]![name] = ex['perSide'] == true;
 
     circuitoReps[i]![round]![name] =
         TextEditingController(text: (ex['reps'] ?? 1).toString());
@@ -1451,7 +897,8 @@ if (block['type'] == 'Circuito') {
     // ================= SERIES ===========R======
     if (block['type'] == 'Series') {
       for (final ex in block['exercises']) {
-        final key = "$i-${ex['name']}";
+        final name = normalizeExerciseName(ex['name']);
+final key = "$i-$name";
         final int sets = ex['series'] ?? 1;
 
         final String valueType = ex['valueType'] ?? 'reps';
@@ -1535,7 +982,8 @@ seriesWeightCtrl[key] = List.generate(
       }
     }
 
-    _markTabataCompleted(blockIndex, rpeByExercise);
+    tabataTimer.completeBlockWithRpe(blockIndex, rpeByExercise);
+
   }
 
 
@@ -1679,24 +1127,64 @@ Future<void> _confirmDeleteBlock(int index) async {
     ),
   );
 
-  if (ok == true) {
+  if (ok != true) return;
+
   setState(() {
+    // 1️⃣ Eliminar bloque visual
     routine!['blocks'].removeAt(index);
 
+    // 2️⃣ Limpiar estado de ese bloque
     expandedBlocks.remove(index);
     circuitoRound.remove(index);
     circuitoReps.remove(index);
     circuitoWeight.remove(index);
     circuitoRpePorRonda.remove(index);
     circuitoDone.remove(index);
-    startedTabataBlocks.remove(index);
-    completedTabataBlocks.remove(index);
-    tabataRpeResults.remove(index);
+    tabataTimer.resetBlock(index);
+
+    // 3️⃣ 🔥 REINDEXAR TODO LO QUE ESTÁ DESPUÉS
+    _reindexStateAfterDeletion(index);
   });
 }
 
-}
+void _reindexStateAfterDeletion(int deletedIndex) {
 
+  Map<String, List<Map<String, dynamic>>> newSeriesData = {};
+  Map<String, List<TextEditingController>> newSeriesReps = {};
+  Map<String, List<TextEditingController>> newSeriesWeight = {};
+
+  for (final entry in seriesData.entries) {
+    final parts = entry.key.split('-');
+    int blockIndex = int.parse(parts.first);
+    final exercise = parts.sublist(1).join('-');
+
+    if (blockIndex < deletedIndex) {
+      newSeriesData[entry.key] = entry.value;
+      newSeriesReps[entry.key] = seriesRepsCtrl[entry.key]!;
+      newSeriesWeight[entry.key] = seriesWeightCtrl[entry.key]!;
+    } 
+    else if (blockIndex > deletedIndex) {
+      final newIndex = blockIndex - 1;
+      final newKey = "$newIndex-$exercise";
+
+      newSeriesData[newKey] = entry.value;
+      newSeriesReps[newKey] = seriesRepsCtrl[entry.key]!;
+      newSeriesWeight[newKey] = seriesWeightCtrl[entry.key]!;
+    }
+  }
+
+  seriesData
+    ..clear()
+    ..addAll(newSeriesData);
+
+  seriesRepsCtrl
+    ..clear()
+    ..addAll(newSeriesReps);
+
+  seriesWeightCtrl
+    ..clear()
+    ..addAll(newSeriesWeight);
+}
 
 
   // ================= BUILD =================
@@ -1755,13 +1243,91 @@ Future<void> _confirmDeleteBlock(int index) async {
           _blockHeader(i, routine!['blocks'][i]),
 
           if (routine!['blocks'][i]['type'] == 'Circuito')
-            _buildCircuitBlock(i, routine!['blocks'][i]),
+  CircuitBlockWidget(
+    index: i,
+    block: routine!['blocks'][i],
+    expanded: expandedBlocks[i] ?? false,
+    circuitoRound: circuitoRound,
+    circuitoReps: circuitoReps,
+    circuitoWeight: circuitoWeight,
+    circuitoRpePorRonda: circuitoRpePorRonda,
+    circuitoDone: circuitoDone,
+    normalizeExerciseName: normalizeExerciseName,
+    circuitoPerSide: circuitoPerSide,
+onPerSideChanged: (blockIndex, exerciseName, value) {
+  circuitoPerSide.putIfAbsent(blockIndex, () => {});
+  circuitoPerSide[blockIndex]![exerciseName] = value;
+
+  final exercises =
+      routine!['blocks'][blockIndex]['exercises'] as List;
+
+  for (final ex in exercises) {
+    if (normalizeExerciseName(ex['name']) ==
+        exerciseName) {
+      ex['perSide'] = value;
+    }
+  }
+
+  setState(() {});
+},
+    onStateChanged: () => setState(() {}),
+  ),
+
 
           if (routine!['blocks'][i]['type'] == 'Series')
-            _buildSeriesBlock(i, routine!['blocks'][i]),
+  SeriesBlockWidget(
+    index: i,
+    block: routine!['blocks'][i],
+    expanded: expandedBlocks[i] ?? false,
+    seriesData: seriesData,
+    seriesRepsCtrl: seriesRepsCtrl,
+    seriesWeightCtrl: seriesWeightCtrl,
+    normalizeExerciseName: normalizeExerciseName,
+    getEquipment: _getEquipment,
+    isPerSide: _isPerSide,
+    onInfoPressed: _showExerciseInfo,
+    onDeleteExercise: _confirmDeleteExercise,
+    onAddExercise: _addExerciseToSeries,
+    suggestedWeightText: _suggestedWeightText,
+    suggestedRepsText: _suggestedRepsText,
+    onPerSideChanged: (blockIndex, exerciseName, value) {
+  final key = "$blockIndex-$exerciseName";
+
+  if (seriesData.containsKey(key)) {
+    for (final s in seriesData[key]!) {
+      s['perSide'] = value;
+    }
+  }
+  // también actualizar el block original
+  final exercises =
+      routine!['blocks'][blockIndex]['exercises'] as List;
+
+  for (final ex in exercises) {
+    if (normalizeExerciseName(ex['name']) ==
+        exerciseName) {
+      ex['perSide'] = value;
+    }
+  }
+
+  setState(() {});
+},
+      onStateChanged: () => setState(() {}),
+
+  ),
+
 
           if (routine!['blocks'][i]['type'] == 'Tabata')
-            _buildTabataBlock(i, routine!['blocks'][i]),
+  TabataBlockWidget(
+    index: i,
+    block: routine!['blocks'][i],
+    expanded: expandedBlocks[i] ?? false,
+    tabataTimer: tabataTimer,
+    onStartTabata: (blockIndex, block) {
+      _startTabata(blockIndex: blockIndex, block: block);
+    },
+    onSkipTabata: _skipTabata,
+  ),
+
 
           const SizedBox(height: 24),
         ],
@@ -1782,90 +1348,25 @@ Future<void> _confirmDeleteBlock(int index) async {
     ),
 
     // ================= OVERLAY TABATA =================
-    if (tabataRunning) _tabataOverlay(),
+    AnimatedBuilder(
+  animation: tabataTimer,
+  builder: (_, __) {
+    if (!tabataTimer.isRunning) return const SizedBox();
+    return TabataOverlayWidget(
+      tabataTimer: tabataTimer,
+      onSkip: _skipTabata,
+    );
+  },
+),
+
+
   ],
 ),
 
     );
   }
 
-  // ================= VALIDATION =================
-
-
-Widget _tabataOverlay() {
-  final bool isWork = tabataPhase == TabataPhase.work;
-
-  return Positioned.fill(
-    child: Container(
-      color: Colors.black.withOpacity(0.45), // fondo oscurecido
-      child: Center(
-        child: Card(
-          elevation: 16,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  "TABATA",
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-
-                Text(
-                  "Ronda $tabataRound",
-                  style: const TextStyle(fontSize: 18),
-                ),
-                const SizedBox(height: 8),
-
-                Text(
-                  tabataExercise,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                Text(
-                  isWork ? "TRABAJO" : "DESCANSO",
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: isWork ? Colors.red : Colors.green,
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                Text(
-                  "$tabataElapsed / $tabataTotal s",
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                TextButton.icon(
-                  icon: const Icon(Icons.stop),
-                  label: const Text("Finalizar Tabata"),
-                  onPressed: _skipTabata,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-
+ 
 int _countCompletedCircuitRounds(
   int blockIndex,
   Map<String, dynamic> block,
@@ -1948,7 +1449,6 @@ Future<void> _askWorkoutMode() async {
 }
 
 
-
 void _startFreeWorkout() {
   setState(() {
     routine = {
@@ -1961,7 +1461,6 @@ void _startFreeWorkout() {
   _initializeRoutineState();
   loading = false;
 }
-
 
 bool _isCircuitRoundCompleted(
   int blockIndex,
@@ -2009,19 +1508,17 @@ if (completedRounds < visibleRounds) return false;
 
   // ================= TABATA =================
   for (int i = 0; i < routine!['blocks'].length; i++) {
-    final block = routine!['blocks'][i];
-    if (block['type'] != 'Tabata') continue;
+  final block = routine!['blocks'][i];
+  if (block['type'] != 'Tabata') continue;
 
-    // 🔹 Si nunca se inició, NO bloquea finalizar
-    if (!startedTabataBlocks.contains(i)) continue;
-
-    // 🔹 Si se inició, debe completarse
-    if (!completedTabataBlocks.contains(i)) return false;
+  if (tabataTimer.isStarted(i) &&
+      !tabataTimer.isCompleted(i)) {
+    return false;
   }
-
-  return true;
 }
 
+return true;
+  }
 
   // ================= SAVE =================
 
@@ -2057,49 +1554,7 @@ String normalizeExerciseName(dynamic raw) {
   return 'Ejercicio';
 }
 
-
-  Future<void> _saveWorkout() async {
-    
-    if (_saving) return;
-
-    void setStep(String step) {
-  if (!mounted) return;
-
-  setState(() {
-    _saving = true;
-    _savingStep = step;
-  });
-}
-
-
-    void finish() {
-  if (!mounted) return;
-
-  setState(() {
-    _saving = false;
-    _savingStep = "";
-  });
-}
-
-
-    try {
-      setStep("Preparando datos…");
-
-      final finishedAt = DateTime.now();
-final startedAt = workoutStartedAt ?? finishedAt;
-final duration = finishedAt.difference(startedAt);
-final durationMinutes =
-    (duration.inSeconds / 60).round();
-
-
-
-      final uid = FirebaseAuth.instance.currentUser!.uid;
-      final now = DateTime.now();
-
-      final List<Map<String, dynamic>> performed = [];
-      final List<WorkoutSet> workoutSets = [];
-
-      // ======================================================
+ // ======================================================
       // 🧠 Resolver muscleWeights (FUENTE ÚNICA)
       // ======================================================
       Map<Muscle, double> resolveMuscleWeights(Map<String, dynamic> exData) {
@@ -2118,347 +1573,470 @@ final durationMinutes =
         return result;
       }
 
-      // ======================================================
-      // 1️⃣ SERIES
-      // ======================================================
-      setStep("Procesando series…");
 
-      for (final entry in seriesData.entries) {
-        final exerciseName = entry.key.split('-').last;
-
-        final exSnap = await FirebaseFirestore.instance
-            .collection('exercises')
-            .where('name', isEqualTo: exerciseName)
-            .limit(1)
-            .get();
-
-        if (exSnap.docs.isEmpty) continue;
-
-        final exData = exSnap.docs.first.data();
-        final muscleWeights = resolveMuscleWeights(exData);
-        final blockIndex = int.parse(entry.key.split('-').first);
-
-final block = routine!['blocks'][blockIndex];
-
-final List<Map<String, dynamic>> blockExercises =
-    List<Map<String, dynamic>>.from(block['exercises'] as List);
-
-final Map<String, dynamic> blockExercise =
-    blockExercises.firstWhere(
-      (e) => normalizeExerciseName(e['name']) == exerciseName,
-      orElse: () => <String, dynamic>{},
-    );
-
-
-final bool perSide =
-    blockExercise['perSide'] ??
-    (exData['perSide'] == true);
-
-
-        
-
-
-
-        for (final s in entry.value) {
-          if (s['done'] != true) continue;
-
-          final bool isTimeBased = s['valueType'] == 'time';
-
-final int reps = isTimeBased
-    ? 1
-    : (s['reps'] ?? 0);
-
-final int seconds = isTimeBased
-    ? (s['value'] ?? 0)
-    : 0;
-
-if ((isTimeBased && seconds <= 0) || (!isTimeBased && reps <= 0)) continue;
-
-
-          final int stimulus = isTimeBased
-              ? (s['value'] ?? 0)
-              : (s['reps'] ?? 0);
-
-          if (stimulus <= 0) continue; // 🔒 evita basura
-
-          workoutSets.add(
-  WorkoutSet(
-    exercise: exerciseName,
-    sets: 1,
-    reps: reps,
-    rpe: (s['rpe'] as num).toDouble(),
-    weight: (s['weight'] as num?)?.toDouble(),
-    muscleWeights: muscleWeights,
-    sourceType: 'Series',
-    perSide: perSide, // 👈 NUEVO
-  ),
-);
-
-        }
-
-       performed.add({
-  'type': 'Series',
-  'exercise': normalizeExerciseName(exData['name']),
-  'perSide': perSide, // 👈 GUARDADO GLOBAL
-  'sets': entry.value,
-});
-
-
-
-      }
-
-      // ======================================================
-      // 2️⃣ CIRCUITOS
-      // ======================================================
-      setStep("Procesando circuitos…");
-
-      for (final entry in circuitoRound.entries) {
-        final blockIndex = entry.key;
-        final block = routine!['blocks'][blockIndex];
-        final completedRounds =
-    _countCompletedCircuitRounds(blockIndex, block);
-
-
-        if (completedRounds == 0) continue;
-
-        final List<Map<String, dynamic>> roundsData = [];
-
-        for (int r = 1; r <= completedRounds; r++) {
-          final List<Map<String, dynamic>> exercisesData = [];
-
-          for (final ex in block['exercises']) {
-            final String name = normalizeExerciseName(ex['name']);
-
-            final int? rpe = circuitoRpePorRonda[blockIndex]?[r]?[name];
-
-            if (rpe == null) continue;
-            final weightText = circuitoWeight[blockIndex]?[r]?[name]?.text;
-
-            final double? weight = weightText != null && weightText.isNotEmpty
-                ? double.tryParse(weightText)
-                : null;
-
-            final repsText = circuitoReps[blockIndex]?[r]?[name]?.text;
-final int reps = repsText != null && repsText.isNotEmpty
-    ? int.tryParse(repsText) ?? 1
-    : 1;
- // estímulo lógico si es por tiempo
-
-exercisesData.add({
-  'exercise': name,
-  'rpe': rpe,
-  'reps': reps,
-  'perSide': ex['perSide'] == true, // 👈 AQUÍ
-  if (weight != null) 'weight': weight,
-  if (ex['value'] != null) 'seconds': ex['value'],
-});
-
-
-
-            final exSnap = await FirebaseFirestore.instance
-                .collection('exercises')
-                .where('name', isEqualTo: name)
-                .limit(1)
-                .get();
-
-            if (exSnap.docs.isNotEmpty) {
-              final muscleWeights = resolveMuscleWeights(
-                exSnap.docs.first.data(),
-              );
-
-              workoutSets.add(
-                WorkoutSet(
-                  exercise: name,
-                  sets: 1,
-                  reps: reps,
-                  rpe: rpe.toDouble(),
-                  weight: weight,
-                  perSide: ex['perSide'] == true,
-                  muscleWeights: muscleWeights,
-                  sourceType: 'Circuito',
-                ),
-              );
-            }
-          }
-
-          if (exercisesData.isNotEmpty) {
-            roundsData.add({'round': r, 'exercises': exercisesData});
-          }
-        }
-
-        if (roundsData.isNotEmpty) {
-          performed.add({
-            'type': 'Circuito',
-            'blockIndex': blockIndex,
-            'name': block['name'] ?? 'Circuito ${blockIndex + 1}',
-            'rounds': roundsData,
-          });
-        }
-      }
-
-      // ======================================================
-      // 2️⃣ TABATA
-      // ======================================================
-      setStep("Procesando tabata…");
-
-      for (final entry in tabataRpeResults.entries) {
-        final blockIndex = entry.key;
-        final rpeByExercise = entry.value;
-        final block = routine!['blocks'][blockIndex];
-
-        final List<Map<String, dynamic>> exercisesData = [];
-
-        for (final ex in block['exercises']) {
-          final String name = ex['name'];
-          final int? rpe = rpeByExercise[name];
-          if (rpe == null) continue;
-
-          exercisesData.add({'exercise': name, 'rpe': rpe});
-
-          final exSnap = await FirebaseFirestore.instance
-              .collection('exercises')
-              .where('name', isEqualTo: name)
-              .limit(1)
-              .get();
-
-          if (exSnap.docs.isNotEmpty) {
-            final muscleWeights = resolveMuscleWeights(
-              exSnap.docs.first.data(),
-            );
-
-            workoutSets.add(
-              WorkoutSet(
-                exercise: name,
-                sets: 1, // estímulo lógico
-                reps: 1,
-                rpe: rpe.toDouble(),
-                muscleWeights: muscleWeights,
-                sourceType: 'Tabata',
-              ),
-            );
-          }
-        }
-
-        if (exercisesData.isNotEmpty) {
-          performed.add({
-            'type': 'Tabata',
-            'blockIndex': blockIndex,
-            'name': block['name'] ?? 'Tabata ${blockIndex + 1}',
-            'work': block['work'],
-            'rest': block['rest'],
-            'rounds': block['rounds'],
-            'exercises': exercisesData,
-          });
-        }
-      }
-
-      // ======================================================
-      // 3️⃣ GUARDAR ENTRENAMIENTO
-      // ======================================================
-      setStep("Guardando entrenamiento…");
-
-      late DocumentReference workoutRef;
-
-if (isEdit) {
-  workoutRef = widget.workoutRef!;
-
-  await workoutRef.update({
-    'performed': performed,
-    'updatedAt': FieldValue.serverTimestamp(),
-    'startedAt': Timestamp.fromDate(startedAt),
-    'finishedAt': Timestamp.fromDate(finishedAt),
-    'durationMinutes': durationMinutes,
-  });
-
-} else {
-  workoutRef = await FirebaseFirestore.instance
-      .collection('workouts_logged')
-      .add({
-    'userId': uid,
-    'routineId': routine!['id'],
-    'routineName': routine!['name'],
-    'date': Timestamp.fromDate(now),
-    'startedAt': Timestamp.fromDate(startedAt),
-    'finishedAt': Timestamp.fromDate(finishedAt),
-    'durationMinutes': durationMinutes,
-    'performed': performed,
+void _startSaving() {
+  if (!mounted) return;
+  setState(() {
+    _saving = true;
+    _savingStep = "Preparando datos…";
   });
 }
 
+void _setSavingStep(String step) {
+  if (!mounted) return;
+  setState(() {
+    _savingStep = step;
+  });
+}
 
+void _finishSaving() {
+  if (!mounted) return;
+  setState(() {
+    _saving = false;
+    _savingStep = "";
+  });
+}
 
-
-      // ======================================================
-      // 4️⃣ CALCULAR CARGA MUSCULAR
-      // ======================================================
-      setStep("Calculando carga muscular…");
-
-
-      final muscleLoad = await WorkoutLoadService.calculateLoadFromWorkout({
-        'performed': performed,
-      });
-
-      // ======================================================
-      // 5️⃣ ACTUALIZAR FATIGA (MODELO CONTINUO POR HORA)
-      // ======================================================
-      setStep("Actualizando fatiga muscular…");
-
-      final muscleStateRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .collection('muscle_state');
-
-      for (final entry in muscleLoad.entries) {
-        final muscle = entry.key;
-        final sessionMuscleLoad = entry.value;
-
-        final docRef = muscleStateRef.doc(muscle.name);
-        final snap = await docRef.get();
-
-        // Estado previo
-        MuscleFatigueState state;
-
-        if (snap.exists) {
-          state = MuscleFatigueState(
-            fatigue: (snap['fatigue'] ?? 0).toDouble(),
-            lastUpdate: (snap['lastUpdated'] as Timestamp).toDate(),
-          );
-        } else {
-          state = MuscleFatigueState(fatigue: 0, lastUpdate: now);
-        }
-
-        // 🏋️ Actualizar tras esta sesión
-        final updatedState = FatigueService.updateAfterSession(
-          state: state,
-          sessionTime: now,
-          sessionLoad: sessionMuscleLoad,
-        );
-
-        // 💾 Guardar estado resumido
-        await docRef.set({
-          'fatigue': updatedState.fatigue,
-          'lastUpdated': Timestamp.fromDate(updatedState.lastUpdate),
-        });
-      }
-
-      await workoutRef.update({
-        'muscleLoad': {for (final e in muscleLoad.entries) e.key.name: e.value},
-      });
-
-
-      finish();
-      Navigator.pop(context);
-    } catch (e, stack) {
-  finish();
+void _handleSaveError(Object e, StackTrace stack) {
+  _finishSaving();
 
   debugPrint("❌ ERROR AL GUARDAR:");
   debugPrint(e.toString());
   debugPrint(stack.toString());
 
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text("Error al guardar. Revisa consola.")),
+    const SnackBar(content: Text("Error al guardar. Revisa consola.")),
   );
 }
 
+
+Future<_WorkoutBuildResult> _buildWorkoutData() async {
+  _setSavingStep("Procesando datos…");
+
+  late DateTime startedAt;
+  late DateTime finishedAt;
+  late int durationMinutes;
+
+  if (isEdit) {
+
+    final workoutDate =
+        (widget.existingWorkout?['date'] as Timestamp?)?.toDate()
+            ?? DateTime.now();
+
+    if (_originalStartedAt != null &&
+        _originalFinishedAt != null &&
+        _originalDurationMinutes != null) {
+
+      startedAt = _originalStartedAt!;
+      finishedAt = _originalFinishedAt!;
+      durationMinutes = _originalDurationMinutes!;
+    } else {
+
+      final randomMinutes = 50 + Random().nextInt(21);
+
+      finishedAt = workoutDate;
+      startedAt =
+          finishedAt.subtract(Duration(minutes: randomMinutes));
+      durationMinutes = randomMinutes;
+    }
+
+  } else {
+
+    finishedAt = DateTime.now();
+    startedAt = workoutStartedAt ?? finishedAt;
+    durationMinutes =
+        finishedAt.difference(startedAt).inMinutes;
+  }
+
+  final List<Map<String, dynamic>> performed = [];
+  final List<WorkoutSet> workoutSets = [];
+
+  await _processSeries(performed, workoutSets);
+  await _processCircuits(performed, workoutSets);
+  await _processTabata(performed, workoutSets);
+
+  return _WorkoutBuildResult(
+    performed: performed,
+    workoutSets: workoutSets,
+    startedAt: startedAt,
+    finishedAt: finishedAt,
+    durationMinutes: durationMinutes,
+  );
+}
+
+
+Future<void> _processSeries(
+  List<Map<String, dynamic>> performed,
+  List<WorkoutSet> workoutSets,
+) async {
+  _setSavingStep("Procesando series…");
+
+  for (final entry in seriesData.entries) {
+    
+    final key = entry.key;
+final blockIndex = int.parse(key.split('-').first);
+final exerciseName = key.split('-').sublist(1).join('-');
+
+
+    final exData = _getExerciseFromCatalog(exerciseName);
+    if (exData == null) continue;
+
+    final muscleWeights = resolveMuscleWeights(exData);
+
+    final List<Map<String, dynamic>> setsToSave = [];
+
+    for (int i = 0; i < entry.value.length; i++) {
+      if (entry.value[i]['done'] != true) continue;
+
+      final repsText = seriesRepsCtrl[key]?[i].text ?? '';
+      final weightText = seriesWeightCtrl[key]?[i].text ?? '';
+
+
+      final int reps = int.tryParse(repsText) ?? 0;
+      final double? weight =
+          weightText.isNotEmpty ? double.tryParse(weightText) : null;
+
+      
+
+
+      if (reps <= 0) continue;
+
+      setsToSave.add({
+        'reps': reps,
+        'weight': weight,
+        'rpe': entry.value[i]['rpe'],
+      });
+
+      workoutSets.add(
+        WorkoutSet(
+          exercise: exerciseName,
+          sets: 1,
+          reps: reps,
+          rpe: (entry.value[i]['rpe'] as num).toDouble(),
+          weight: weight,
+          muscleWeights: muscleWeights,
+          sourceType: 'Series',
+        ),
+      );
+    }
+
+    if (setsToSave.isNotEmpty) {
+      final block = routine!['blocks'][blockIndex];
+
+    final originalExercise = block['exercises'].firstWhere(
+  (ex) => normalizeExerciseName(ex['name']) == exerciseName,
+  orElse: () => <String, dynamic>{},
+);
+
+final bool perSide =
+    (originalExercise is Map && originalExercise.containsKey('perSide'))
+        ? originalExercise['perSide'] == true
+        : false;
+
+final existingBlock = performed.firstWhere(
+  (b) => b['blockIndex'] == blockIndex,
+  orElse: () => {},
+);
+
+if (existingBlock.isEmpty) {
+  performed.add({
+    'type': 'Series',
+    'blockIndex': blockIndex,
+    'blockTitle': block['title'] ?? block['name'] ?? 'Series',
+    'exercises': [],
+  });
+}
+
+final blockMap = performed.firstWhere(
+  (b) => b['blockIndex'] == blockIndex,
+);
+
+blockMap['exercises'].add({
+  'exercise': exerciseName,
+  'perSide': perSide,
+  'sets': setsToSave,
+});
+
+
+
+    }
   }
 }
+
+Future<void> _processCircuits(
+  List<Map<String, dynamic>> performed,
+  List<WorkoutSet> workoutSets,
+) async {
+  _setSavingStep("Procesando circuitos…");
+
+  for (final entry in circuitoRound.entries) {
+    final blockIndex = entry.key;
+    final block = routine!['blocks'][blockIndex];
+
+    final visibleRounds = circuitoRound[blockIndex] ?? 1;
+    if (visibleRounds == 0) continue;
+
+    final List<Map<String, dynamic>> roundsData = [];
+
+    for (int r = 1; r <= visibleRounds; r++) {
+      final List<Map<String, dynamic>> exercisesData = [];
+
+      for (final ex in block['exercises']) {
+        final name = normalizeExerciseName(ex['name']);
+
+        final rpe = circuitoRpePorRonda[blockIndex]?[r]?[name];
+        if (rpe == null) continue;
+
+        final repsText =
+            circuitoReps[blockIndex]?[r]?[name]?.text ?? '';
+        final weightText =
+            circuitoWeight[blockIndex]?[r]?[name]?.text ?? '';
+
+        final int reps = int.tryParse(repsText) ?? 1;
+        final double? weight =
+            weightText.isNotEmpty ? double.tryParse(weightText) : null;
+
+        final perSide =
+    circuitoPerSide[blockIndex]?[name] == true;
+
+exercisesData.add({
+  'exercise': name,
+  'reps': reps,
+  'rpe': rpe,
+  if (weight != null) 'weight': weight,
+  'perSide': perSide,
+});
+
+        final exData = _getExerciseFromCatalog(name);
+        if (exData == null) continue;
+
+        final muscleWeights = resolveMuscleWeights(exData);
+
+        workoutSets.add(
+          WorkoutSet(
+            exercise: name,
+            sets: 1,
+            reps: reps,
+            rpe: rpe.toDouble(),
+            weight: weight,
+            muscleWeights: muscleWeights,
+            sourceType: 'Circuito',
+          ),
+        );
+      }
+
+      if (exercisesData.isNotEmpty) {
+        roundsData.add({
+          'round': r,
+          'exercises': exercisesData,
+        });
+      }
+    }
+
+    if (roundsData.isNotEmpty) {
+      performed.add({
+  'type': 'Circuito',
+  'blockIndex': blockIndex,
+  'blockTitle': block['title'] ?? block['name'] ?? 'Circuito',
+  'rounds': roundsData,
+});
+    }
+  }
+}
+
+
+
+Future<DocumentReference> _persistWorkout(
+  _WorkoutBuildResult data,
+) async {
+  _setSavingStep("Guardando entrenamiento…");
+
+  final uid = FirebaseAuth.instance.currentUser!.uid;
+  final now = DateTime.now();
+
+  if (isEdit) {
+  final ref = widget.workoutRef!;
+
+  await ref.update({
+  'performed': data.performed,
+  'startedAt': Timestamp.fromDate(data.startedAt),
+  'finishedAt': Timestamp.fromDate(data.finishedAt),
+  'durationMinutes': data.durationMinutes,
+  'updatedAt': FieldValue.serverTimestamp(),
+});
+
+  return ref;
+}
+
+  return await FirebaseFirestore.instance
+      .collection('workouts_logged')
+      .add({
+    'userId': uid,
+    'routineId': routine!['id'],
+    'routineName': routine!['name'],
+    'date': Timestamp.fromDate(now),
+    'startedAt': Timestamp.fromDate(data.startedAt),
+    'finishedAt': Timestamp.fromDate(data.finishedAt),
+    'durationMinutes': data.durationMinutes,
+    'performed': data.performed,
+  });
+}
+
+
+
+Future<void> _processTabata(
+  List<Map<String, dynamic>> performed,
+  List<WorkoutSet> workoutSets,
+) async {
+  _setSavingStep("Procesando tabata…");
+
+  for (final entry in tabataTimer.allResults.entries) {
+    final blockIndex = entry.key;
+    final rpeByExercise = entry.value;
+    final block = routine!['blocks'][blockIndex];
+
+    final List<Map<String, dynamic>> exercisesData = [];
+
+    for (final ex in block['exercises']) {
+      final name = ex['name'];
+      final rpe = rpeByExercise[name];
+
+      if (rpe == null) continue;
+
+      exercisesData.add({
+        'exercise': name,
+        'rpe': rpe,
+      });
+
+      final exData = _getExerciseFromCatalog(name);
+      if (exData == null) continue;
+
+      final muscleWeights = resolveMuscleWeights(exData);
+
+      workoutSets.add(
+        WorkoutSet(
+          exercise: name,
+          sets: 1,
+          reps: 1,
+          rpe: rpe.toDouble(),
+          muscleWeights: muscleWeights,
+          sourceType: 'Tabata',
+        ),
+      );
+    }
+
+    if (exercisesData.isNotEmpty) {
+      performed.add({
+  'type': 'Tabata',
+  'blockIndex': blockIndex,
+  'blockTitle': block['title'] ?? block['name'] ?? 'Tabata',
+  'work': block['work'],
+  'rest': block['rest'],
+  'rounds': block['rounds'],
+  'exercises': exercisesData,
+});
+    }
+  }
+}
+
+
+
+Future<void> _saveWorkout() async {
+  if (_saving) return;
+
+  _startSaving();
+
+  try {
+    final data = await _buildWorkoutData();
+    final muscleLoad = await _calculateLoad(data);
+      final workoutRef = await _persistWorkout(data);
+
+
+    await _updateFatigue(muscleLoad);
+
+    await workoutRef.update({
+      'muscleLoad': {
+        for (final e in muscleLoad.entries)
+          e.key.name: e.value
+      }
+    });
+
+
+    _finishSaving();
+    Navigator.pop(context);
+
+  } catch (e, stack) {
+    _handleSaveError(e, stack);
+  }
+}
+
+
+
+
+Future<Map<Muscle, double>> _calculateLoad(
+  _WorkoutBuildResult data,
+) async {
+  _setSavingStep("Calculando carga muscular…");
+
+  return await WorkoutLoadService.calculateLoadFromWorkout({
+    'performed': data.performed,
+  });
+}
+
+
+
+Future<void> _updateFatigue(
+  Map<Muscle, double> muscleLoad,
+) async {
+  _setSavingStep("Actualizando fatiga muscular…");
+
+  final uid = FirebaseAuth.instance.currentUser!.uid;
+  final now = DateTime.now();
+
+  final muscleStateRef = FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('muscle_state');
+
+  for (final entry in muscleLoad.entries) {
+    final muscle = entry.key;
+    final sessionMuscleLoad = entry.value;
+
+    final docRef = muscleStateRef.doc(muscle.name);
+    final snap = await docRef.get();
+
+    MuscleFatigueState state;
+
+    if (snap.exists) {
+  final previousState = MuscleFatigueState(
+    fatigue: (snap['fatigue'] ?? 0).toDouble(),
+    lastUpdate: (snap['lastUpdated'] as Timestamp).toDate(),
+  );
+
+  final recoveredFatigue = FatigueService.recoverToNow(
+    fatigue: previousState.fatigue,
+    lastUpdate: previousState.lastUpdate,
+    now: now,
+  );
+
+  state = MuscleFatigueState(
+    fatigue: recoveredFatigue,
+    lastUpdate: now,
+  );
+} else {
+  state = MuscleFatigueState(fatigue: 0, lastUpdate: now);
+}
+
+    final updatedState = FatigueService.updateAfterSession(
+  state: state,
+  sessionTime: now,
+  sessionLoad: sessionMuscleLoad,
+);
+
+    await docRef.set({
+      'fatigue': updatedState.fatigue,
+      'lastUpdated': Timestamp.fromDate(updatedState.lastUpdate),
+    });
+  }
+}
+  }

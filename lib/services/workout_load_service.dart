@@ -30,50 +30,53 @@ class WorkoutLoadService {
   // 🔎 CARGAR EJERCICIOS USADOS
   // ======================================================
   static Future<Map<String, Map<String, dynamic>>> _loadExercises(
-    List<Map<String, dynamic>> performed,
-  ) async {
-    final Set<String> names = {};
+  List<Map<String, dynamic>> performed,
+) async {
+  final Set<String> names = {};
 
-    for (final e in performed) {
-      if (e['type'] == 'Series') {
-        if (e['exercise'] != null) {
-          names.add(e['exercise']);
-        } else if (e['exerciseKey'] != null) {
-          names.add(e['exerciseKey'].toString().split('-').last);
-        }
-      }
+  for (final e in performed) {
 
-      if (e['type'] == 'Circuito') {
-        for (final round in e['rounds'] ?? []) {
-          for (final ex in round['exercises'] ?? []) {
-            names.add(ex['exercise']);
-          }
-        }
-      }
-
-      if (e['type'] == 'Tabata') {
-        for (final ex in e['exercises'] ?? []) {
+    // 🔵 SERIES
+    if (e['type'] == 'Series') {
+      for (final ex in e['exercises'] ?? []) {
+        if (ex['exercise'] != null) {
           names.add(ex['exercise']);
         }
       }
     }
 
-    if (names.isEmpty) return {};
-
-    final snap = await FirebaseFirestore.instance
-        .collection('exercises')
-        .where('name', whereIn: names.toList())
-        .get();
-
-    final Map<String, Map<String, dynamic>> exercisesMap = {};
-
-    for (final d in snap.docs) {
-      exercisesMap[d['name']] = d.data();
+    // 🔴 CIRCUITO
+    if (e['type'] == 'Circuito') {
+      for (final round in e['rounds'] ?? []) {
+        for (final ex in round['exercises'] ?? []) {
+          names.add(ex['exercise']);
+        }
+      }
     }
 
-    return exercisesMap;
+    // 🟣 TABATA
+    if (e['type'] == 'Tabata') {
+      for (final ex in e['exercises'] ?? []) {
+        names.add(ex['exercise']);
+      }
+    }
   }
 
+  if (names.isEmpty) return {};
+
+  final snap = await FirebaseFirestore.instance
+      .collection('exercises')
+      .where('name', whereIn: names.toList())
+      .get();
+
+  final Map<String, Map<String, dynamic>> exercisesMap = {};
+
+  for (final d in snap.docs) {
+    exercisesMap[d['name']] = d.data();
+  }
+
+  return exercisesMap;
+}
   // ======================================================
   // 🧱 CONSTRUIR WORKOUT SETS
   // ======================================================
@@ -84,39 +87,40 @@ class WorkoutLoadService {
     final List<WorkoutSet> result = [];
 
     for (final e in performed) {
-      // ======================
-      // 🔵 SERIES
-      // ======================
-      if (e['type'] == 'Series') {
-        final String? name =
-            e['exercise'] ??
-            (e['exerciseKey'] != null
-                ? e['exerciseKey'].toString().split('-').last
-                : null);
+     // ======================
+// 🔵 SERIES
+// ======================
+// ======================
+// 🔵 SERIES (solo nuevo)
+// ======================
+if (e['type'] == 'Series') {
 
-        if (name == null) continue;
+  for (final exEntry in e['exercises'] ?? []) {
 
-        final ex = exercisesMap[name];
-        if (ex == null) continue;
+    final String? name = exEntry['exercise'];
+    if (name == null) continue;
 
-        final muscleWeights = _resolveMuscleWeightsFromExercise(ex);
+    final ex = exercisesMap[name];
+    if (ex == null) continue;
 
-        for (final s in e['sets'] ?? []) {
-          if (s['done'] != true) continue;
+    final muscleWeights =
+        _resolveMuscleWeightsFromExercise(ex);
 
-          result.add(
-            WorkoutSet(
-              exercise: name,
-              sets: 1,
-              reps: (s['reps'] as num?)?.toInt() ?? 1,
-              rpe: (s['rpe'] as num).toDouble(),
-              muscleWeights: muscleWeights,
-              sourceType: 'Series',
-            ),
-          );
-        }
-      }
+    for (final s in exEntry['sets'] ?? []) {
 
+      result.add(
+        WorkoutSet(
+          exercise: name,
+          sets: 1,
+          reps: (s['reps'] as num?)?.toInt() ?? 1,
+          rpe: (s['rpe'] as num?)?.toDouble() ?? 6,
+          muscleWeights: muscleWeights,
+          sourceType: 'Series',
+        ),
+      );
+    }
+  }
+}
       // ======================
       // 🔴 CIRCUITO
       // ======================

@@ -740,10 +740,7 @@ Color _colorForAlert(ProgressAlertType type) {
 
       // ---------- RM history ----------
       final sets = WorkoutRMService
-    .extractAllValidRMSetCandidates(performed)
-    .where((s) => _trackedExercises.contains(s['exercise']))
-    .toList();
-
+    .extractAllValidRMSetCandidates(performed);
 
       for (final s in sets) {
         final ex = s['exercise'];

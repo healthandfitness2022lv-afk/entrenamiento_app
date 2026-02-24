@@ -1,29 +1,30 @@
-// lib/utils/workout_rpe_utils.dart
 double calculateAverageWorkoutRPE(
   List<Map<String, dynamic>> performed,
 ) {
   double sum = 0;
   int count = 0;
 
-  for (final e in performed) {
-    // SERIES
-    if (e['type'] == 'Series') {
-      for (final s in e['sets'] ?? []) {
-        if (s['done'] != true) continue;
-        final rpe = (s['rpe'] as num?)?.toDouble();
-        if (rpe != null) {
-          sum += rpe;
-          count++;
-        }
-      }
-    }
+  for (final block in performed) {
 
-    // CIRCUITO
-    if (e['type'] == 'Circuito') {
-      for (final round in e['rounds'] ?? []) {
-        for (final ex in round['exercises'] ?? []) {
-          final rpe = (ex['rpe'] as num?)?.toDouble();
-          if (rpe != null) {
+    // =======================
+    // 🔵 SERIES
+    // =======================
+    if (block['type'] == 'Series') {
+
+      final exercises =
+          List<Map<String, dynamic>>.from(block['exercises'] ?? []);
+
+      for (final ex in exercises) {
+
+        final sets =
+            List<Map<String, dynamic>>.from(ex['sets'] ?? []);
+
+        for (final s in sets) {
+
+          final double? rpe =
+              (s['rpe'] as num?)?.toDouble();
+
+          if (rpe != null && rpe > 0) {
             sum += rpe;
             count++;
           }
@@ -31,11 +32,46 @@ double calculateAverageWorkoutRPE(
       }
     }
 
-    // TABATA
-    if (e['type'] == 'Tabata') {
-      for (final ex in e['exercises'] ?? []) {
-        final rpe = (ex['rpe'] as num?)?.toDouble();
-        if (rpe != null) {
+    // =======================
+    // 🔴 CIRCUITO
+    // =======================
+    if (block['type'] == 'Circuito') {
+
+      final rounds =
+          List<Map<String, dynamic>>.from(block['rounds'] ?? []);
+
+      for (final round in rounds) {
+
+        final exercises =
+            List<Map<String, dynamic>>.from(round['exercises'] ?? []);
+
+        for (final ex in exercises) {
+
+          final double? rpe =
+              (ex['rpe'] as num?)?.toDouble();
+
+          if (rpe != null && rpe > 0) {
+            sum += rpe;
+            count++;
+          }
+        }
+      }
+    }
+
+    // =======================
+    // 🟣 TABATA
+    // =======================
+    if (block['type'] == 'Tabata') {
+
+      final exercises =
+          List<Map<String, dynamic>>.from(block['exercises'] ?? []);
+
+      for (final ex in exercises) {
+
+        final double? rpe =
+            (ex['rpe'] as num?)?.toDouble();
+
+        if (rpe != null && rpe > 0) {
           sum += rpe;
           count++;
         }

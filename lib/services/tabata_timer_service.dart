@@ -4,7 +4,11 @@ import 'package:flutter/foundation.dart';
 
 enum TabataPhase { work, rest, finished }
 
-class TabataTimerService {
+class TabataTimerService extends ChangeNotifier {
+  // =========================================================
+  // ⏱ TIMER CORE
+  // =========================================================
+
   Timer? _timer;
 
   int _currentRound = 1;
@@ -12,16 +16,26 @@ class TabataTimerService {
   int _secondsLeft = 0;
   int _phaseTotal = 0;
 
-  late int workSeconds;
-  late int restSeconds;
-  late int totalRounds;
-  late List<Map<String, dynamic>> exercises;
+  late int _workSeconds;
+  late int _restSeconds;
+  late int _totalRounds;
+  late List<Map<String, dynamic>> _exercises;
 
-  TabataPhase phase = TabataPhase.work;
+  TabataPhase _phase = TabataPhase.work;
 
-  // ============================
-  // 🔊 AUDIO CONFIG
-  // ============================
+  // =========================================================
+  // 🧠 SESSION STATE (MULTI BLOQUE)
+  // =========================================================
+
+  final Set<int> _startedBlocks = {};
+  final Set<int> _completedBlocks = {};
+  final Map<int, Map<String, int>> _rpeResults = {};
+
+  int? _activeBlockIndex;
+
+  // =========================================================
+  // 🔊 AUDIO
+  // =========================================================
 
   AudioPlayer _createPlayer() {
     final player = AudioPlayer();
@@ -57,128 +71,203 @@ class TabataTimerService {
   void _soundFinish() => _play('sounds/finish.wav');
   void _soundBeep() => _play('sounds/beep.wav');
 
-  // ============================
-  // CALLBACKS
-  // ============================
-
-  void Function(
-    int round,
-    Map<String, dynamic> exercise,
-    TabataPhase phase,
-    int elapsed,
-    int total,
-  )? onTick;
-
-  void Function()? onFinish;
+  // =========================================================
+  // 📤 GETTERS
+  // =========================================================
 
   bool get isRunning => _timer != null;
 
-  // ============================
-  // ▶️ START
-  // ============================
+  int get currentRound => _currentRound;
 
-  void start({
+  Map<String, dynamic>? get currentExercise =>
+      _exercises.isNotEmpty ? _exercises[_exerciseIndex] : null;
+
+  int get elapsed => _phaseTotal - _secondsLeft;
+
+  int get total => _phaseTotal;
+
+  TabataPhase get phase => _phase;
+
+  int? get activeBlockIndex => _activeBlockIndex;
+
+  bool isStarted(int blockIndex) => _startedBlocks.contains(blockIndex);
+
+  bool isCompleted(int blockIndex) => _completedBlocks.contains(blockIndex);
+
+  Map<String, int>? getRpeResults(int blockIndex) =>
+      _rpeResults[blockIndex];
+
+  Map<int, Map<String, int>> get allResults => _rpeResults;
+
+  // =========================================================
+  // ▶️ START BLOCK
+  // =========================================================
+
+  void startBlock({
+    required int blockIndex,
     required int workSeconds,
     required int restSeconds,
     required int rounds,
     required List<Map<String, dynamic>> exercises,
-    void Function(
-      int round,
-      Map<String, dynamic> exercise,
-      TabataPhase phase,
-      int elapsed,
-      int total,
-    )? onTick,
-    void Function()? onFinish,
   }) {
-    stop();
+    stop(); // seguridad
 
-    this.workSeconds = workSeconds;
-    this.restSeconds = restSeconds;
-    totalRounds = rounds;
-    this.exercises = exercises;
-    this.onTick = onTick;
-    this.onFinish = onFinish;
+    _activeBlockIndex = blockIndex;
+    _startedBlocks.add(blockIndex);
+_completedBlocks.remove(blockIndex);
+_rpeResults.remove(blockIndex);
+
+
+    _workSeconds = workSeconds;
+    _restSeconds = restSeconds;
+    _totalRounds = rounds;
+    _exercises = exercises;
 
     _currentRound = 1;
     _exerciseIndex = 0;
-    phase = TabataPhase.work;
-    _phaseTotal = workSeconds;
-    _secondsLeft = workSeconds;
+    _phase = TabataPhase.work;
+    _phaseTotal = _workSeconds;
+    _secondsLeft = _workSeconds;
 
     _soundWork();
 
-    _timer = Timer.periodic(const Duration(seconds: 1), _tick);
+    _timer = Timer.periodic(
+      const Duration(seconds: 1),
+      _tick,
+    );
+
+    notifyListeners();
   }
 
-  // ============================
-  // ⏱️ TICK
-  // ============================
+
+  void completeBlockWithRpe(
+  int blockIndex,
+  Map<String, int> rpeByExercise,
+) {
+  _completedBlocks.add(blockIndex);
+  _rpeResults[blockIndex] = rpeByExercise;
+  notifyListeners();
+}
+
+
+void markBlockHydrated(
+  int blockIndex,
+  Map<String, int> rpeByExercise,
+) {
+  _startedBlocks.add(blockIndex);
+  _completedBlocks.add(blockIndex);
+  _rpeResults[blockIndex] = rpeByExercise;
+}
+
+
+void resetBlock(int blockIndex) {
+  _startedBlocks.remove(blockIndex);
+  _completedBlocks.remove(blockIndex);
+  _rpeResults.remove(blockIndex);
+  notifyListeners();
+}
+
+
+
+  // =========================================================
+  // ⏱ TICK
+  // =========================================================
 
   void _tick(Timer timer) {
     _secondsLeft--;
 
-    final elapsed = _phaseTotal - _secondsLeft;
-
-    // 🔔 beep últimos 3 segundos
+    // 🔔 Beep últimos 3 segundos
     if (_secondsLeft <= 3 && _secondsLeft > 0) {
       _soundBeep();
     }
 
-    onTick?.call(
-      _currentRound,
-      exercises[_exerciseIndex],
-      phase,
-      elapsed,
-      _phaseTotal,
-    );
+    notifyListeners();
 
     if (_secondsLeft > 0) return;
 
-    // ============================
+    // =====================================================
     // CAMBIO DE FASE
-    // ============================
+    // =====================================================
 
-    if (phase == TabataPhase.work) {
-      phase = TabataPhase.rest;
-      _phaseTotal = restSeconds;
-      _secondsLeft = restSeconds;
+    if (_phase == TabataPhase.work) {
+      _phase = TabataPhase.rest;
+      _phaseTotal = _restSeconds;
+      _secondsLeft = _restSeconds;
 
       _soundRest();
+      notifyListeners();
       return;
     }
 
-    // ============================
+    // =====================================================
     // SIGUIENTE EJERCICIO / RONDA
-    // ============================
+    // =====================================================
 
-    phase = TabataPhase.work;
+    _phase = TabataPhase.work;
     _exerciseIndex++;
 
-    if (_exerciseIndex >= exercises.length) {
+    if (_exerciseIndex >= _exercises.length) {
       _exerciseIndex = 0;
       _currentRound++;
     }
 
-    if (_currentRound > totalRounds) {
-      stop();
-      _soundFinish();
-      onFinish?.call();
+    if (_currentRound > _totalRounds) {
+      _finishBlock();
       return;
     }
 
-    _phaseTotal = workSeconds;
-    _secondsLeft = workSeconds;
+    _phaseTotal = _workSeconds;
+    _secondsLeft = _workSeconds;
 
     _soundWork();
+    notifyListeners();
   }
 
-  // ============================
-  // ⏹️ STOP
-  // ============================
+  // =========================================================
+  // 🏁 FIN DE BLOQUE
+  // =========================================================
+
+  void _finishBlock() {
+    _timer?.cancel();
+    _timer = null;
+
+    _phase = TabataPhase.finished;
+
+    if (_activeBlockIndex != null) {
+      _completedBlocks.add(_activeBlockIndex!);
+    }
+
+    _soundFinish();
+    notifyListeners();
+  }
+
+  // =========================================================
+  // ⏹ STOP
+  // =========================================================
 
   void stop() {
     _timer?.cancel();
     _timer = null;
+    notifyListeners();
+  }
+
+  // =========================================================
+  // 🧹 RESET TOTAL
+  // =========================================================
+
+  void resetAll() {
+    stop();
+    _startedBlocks.clear();
+    _completedBlocks.clear();
+    _rpeResults.clear();
+    _activeBlockIndex = null;
+    _phase = TabataPhase.work;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    stop();
+    super.dispose();
   }
 }

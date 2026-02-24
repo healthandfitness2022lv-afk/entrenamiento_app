@@ -176,7 +176,7 @@ setState(() {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    "Hola, $name 👋",
+                                    "Holaxx, $name 👋",
                                     style: TextStyle(
                                       fontSize: 25,
                                       fontWeight: FontWeight.bold,

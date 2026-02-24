@@ -17,15 +17,12 @@ class RMEntry {
 }
 
 class WorkoutRMService {
+
   /// Epley: 1RM = w * (1 + reps/30)
   static double _epley(double weight, int reps) {
     return weight * (1 + reps / 30.0);
   }
 
-  
-
-  /// Ajuste por RPE (placeholder)
-  /// Si ya tienes rpeFactor(rpe), lo conectamos aquí.
   static double estimate1RM({
     required double weight,
     required int reps,
@@ -36,118 +33,162 @@ class WorkoutRMService {
     return base * rpeFactor(rpe);
   }
 
-  
+  // ==========================================================
+  // 🔥 Extrae TODOS los sets válidos (Series + Circuito)
+  // ==========================================================
+  static List<Map<String, dynamic>> extractAllValidRMSetCandidates(
+    List<Map<String, dynamic>> performed,
+  ) {
+    final out = <Map<String, dynamic>>[];
 
- static List<Map<String, dynamic>> extractAllValidRMSetCandidates(
-  List<Map<String, dynamic>> performed,
-) {
-  final List<Map<String, dynamic>> out = [];
+    for (final block in performed) {
 
-  for (final e in performed) {
-    final type = e['type'];
+      // =========================
+      // 🔵 SERIES
+      // =========================
+      if (block['type'] == 'Series') {
 
-    // =========================
-    // 🔵 SERIES
-    // =========================
-    if (type == 'Series') {
-      final String? exercise =
-          e['exercise'] ??
-          (e['exerciseKey'] != null
-              ? e['exerciseKey'].toString().split('-').last
-              : null);
+        final exercises =
+            List<Map<String, dynamic>>.from(block['exercises'] ?? []);
 
-      if (exercise == null) continue;
+        for (final ex in exercises) {
 
-      for (final s in e['sets'] ?? []) {
-        if (s['done'] != true) continue;
-
-        final reps = s['reps'];
-        final weight = s['weight'];
-        final rpe = s['rpe'];
-
-        if (reps is num && weight is num && weight > 0 && reps > 0) {
-          out.add({
-            'exercise': exercise,
-            'reps': reps,
-            'weight': weight,
-            'rpe': (rpe is num && rpe > 0) ? rpe : 8.0,
-          });
-        }
-      }
-    }
-
-    // =========================
-    // 🔴 CIRCUITO (ESTE FALTABA)
-    // =========================
-    if (type == 'Circuito') {
-      for (final round in e['rounds'] ?? []) {
-        for (final ex in round['exercises'] ?? []) {
-          final exercise = ex['exercise'];
-          final reps = ex['reps'];
-          final weight = ex['weight'];
-          final rpe = ex['rpe'];
-
+          final String? exercise = ex['name'] ?? ex['exercise'];
           if (exercise == null) continue;
 
-          if (reps is num && weight is num && weight > 0 && reps > 0) {
+          final sets =
+              List<Map<String, dynamic>>.from(ex['sets'] ?? []);
+
+          for (final s in sets) {
+
+            final repsRaw = s['reps'];
+            final weightRaw = s['weight'];
+            final rpeRaw = s['rpe'];
+
+            if (repsRaw is! num ||
+                weightRaw is! num ||
+                repsRaw <= 0 ||
+                weightRaw <= 0) continue;
+
+            final int reps = repsRaw.toInt();
+            final double weight = weightRaw.toDouble();
+            final bool perSide = s['perSide'] == true;
+
+            final double effectiveWeight =
+                perSide ? weight * 2.0 : weight;
+
             out.add({
               'exercise': exercise,
               'reps': reps,
-              'weight': weight,
-              'rpe': (rpe is num && rpe > 0) ? rpe : 7.5, // 👈 fallback
+              'weight': effectiveWeight,
+              'rpe': (rpeRaw is num && rpeRaw > 0)
+                  ? rpeRaw.toDouble()
+                  : 8.0,
+            });
+          }
+        }
+      }
+
+      // =========================
+      // 🔴 CIRCUITO
+      // =========================
+      if (block['type'] == 'Circuito') {
+
+        final rounds =
+            List<Map<String, dynamic>>.from(block['rounds'] ?? []);
+
+        for (final round in rounds) {
+
+          final exercises =
+              List<Map<String, dynamic>>.from(round['exercises'] ?? []);
+
+          for (final ex in exercises) {
+
+            final String? exercise = ex['exercise'];
+            if (exercise == null) continue;
+
+            final repsRaw = ex['reps'];
+            final weightRaw = ex['weight'];
+            final rpeRaw = ex['rpe'];
+
+            if (repsRaw is! num ||
+                weightRaw is! num ||
+                repsRaw <= 0 ||
+                weightRaw <= 0) continue;
+
+            final int reps = repsRaw.toInt();
+            final double weight = weightRaw.toDouble();
+            final bool perSide = ex['perSide'] == true;
+
+            final double effectiveWeight =
+                perSide ? weight * 2.0 : weight;
+
+            out.add({
+              'exercise': exercise,
+              'reps': reps,
+              'weight': effectiveWeight,
+              'rpe': (rpeRaw is num && rpeRaw > 0)
+                  ? rpeRaw.toDouble()
+                  : 7.5,
             });
           }
         }
       }
     }
 
-    // =========================
-    // 🟣 TABATA (NO CUENTA PARA RM)
-    // =========================
-    // Ignorado intencionalmente
+    return out;
   }
 
-  return out;
-}
-
-
-
-/// Extrae todos los sets "válidos RM" desde performed (solo Series done)
-  static List<Map<String, dynamic>> extractValidSeriesSets(List<Map<String, dynamic>> performed) {
+  // ==========================================================
+  // 🎯 Solo Series 
+  // ==========================================================
+  static List<Map<String, dynamic>> extractValidSeriesSets(
+    List<Map<String, dynamic>> performed,
+  ) {
     final out = <Map<String, dynamic>>[];
 
-    for (final e in performed) {
-      if (e['type'] != 'Series') continue;
+    for (final block in performed) {
 
-      final String? exercise =
-          e['exercise'] ??
-          (e['exerciseKey'] != null ? e['exerciseKey'].toString().split('-').last : null);
+      if (block['type'] != 'Series') continue;
 
-      if (exercise == null) continue;
+      final exercises =
+          List<Map<String, dynamic>>.from(block['exercises'] ?? []);
 
-      final sets = List<Map<String, dynamic>>.from(e['sets'] ?? []);
-      for (final s in sets) {
-        if (s['done'] != true) continue;
+      for (final ex in exercises) {
 
-        final double weight = (s['weight'] as num?)?.toDouble() ?? 0;
-        final int reps = (s['reps'] as num?)?.toInt() ?? 0;
-        final double rpe = (s['rpe'] as num?)?.toDouble() ?? 0;
-        final bool perSide = s['perSide'] == true;
+        final String? exercise = ex['name'] ?? ex['exercise'];
+        if (exercise == null) continue;
 
-        if (weight <= 0 || reps <= 0 || rpe <= 0) continue;
+        final sets =
+            List<Map<String, dynamic>>.from(ex['sets'] ?? []);
 
-        final double effectiveWeight = perSide ? weight : weight;
+        for (final s in sets) {
 
-        out.add({
-          'exercise': exercise,
-          'weight': effectiveWeight,
-          'reps': reps,
-          'rpe': rpe,
-        });
+          final double weight =
+              (s['weight'] as num?)?.toDouble() ?? 0;
+
+          final int reps =
+              (s['reps'] as num?)?.toInt() ?? 0;
+
+          final double rpe =
+              (s['rpe'] as num?)?.toDouble() ?? 0;
+
+          if (weight <= 0 || reps <= 0 || rpe <= 0) continue;
+
+          final bool perSide = s['perSide'] == true;
+          final double effectiveWeight =
+              perSide ? weight * 2.0 : weight;
+
+          out.add({
+            'exercise': exercise,
+            'weight': effectiveWeight,
+            'reps': reps,
+            'rpe': rpe,
+          });
+        }
       }
     }
 
     return out;
   }
 }
-

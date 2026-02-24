@@ -71,13 +71,13 @@ const List<String> exerciseTypeCatalog = [
 const Map<String, double> exerciseTypeFactor = {
   "Fuerza": 1.3,
   "weightlifting": 1.2,
-  "Hipertrofia": 1.05,
-  "Potencia": 0.95,
+  "Hipertrofia": 1,
+  "Potencia": 1,
   "Pliometría": 0.75,
   "Metabólico": 0.9,
   "Calistenia": 1.0,
   "Isometría": 0.7,
-  "Movilidad": 0.35,
+  "Movilidad": 0.4,
   "Cardio": 0.4,
 };
 
