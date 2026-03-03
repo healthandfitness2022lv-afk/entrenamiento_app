@@ -106,7 +106,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
   List<Map<String, dynamic>> _plannedWorkouts = [];
   List<Map<String, dynamic>> _athleteRoutines = [];
   String? _expandedWorkoutId;
-Map<String, DocumentSnapshot> _routineCache = {};
+final Map<String, DocumentSnapshot> _routineCache = {};
 
 
   bool _loading = true;
@@ -433,7 +433,7 @@ Future<void> _reviewWeekDetailedByDay() async {
     // plannedByDay[YYYY-MM-DD] = [items...]
     final Map<String, List<_DayPlannedItem>> plannedByDay = {};
 
-    String _blockLabel(int idx, Map<String, dynamic> block) {
+    String blockLabel(int idx, Map<String, dynamic> block) {
       final type = (block['type'] ?? 'Bloque').toString();
       final title = (block['title'] ?? block['name'] ?? '').toString().trim();
       final t = title.isNotEmpty ? " • $title" : "";
@@ -441,7 +441,7 @@ Future<void> _reviewWeekDetailedByDay() async {
     }
 
     // Extrae ejercicios planificados desde la rutina (y trae bloque)
-    List<_DayPlannedItem> _extractPlannedItemsFromRoutine(
+    List<_DayPlannedItem> extractPlannedItemsFromRoutine(
       Map<String, dynamic> routine,
     ) {
       final out = <_DayPlannedItem>[];
@@ -453,7 +453,7 @@ Future<void> _reviewWeekDetailedByDay() async {
 
         final block = Map<String, dynamic>.from(bRaw);
         final type = (block['type'] ?? '').toString();
-        final label = _blockLabel(i, block);
+        final label = blockLabel(i, block);
 
         // SERIES: cada ejercicio tiene 'name' y 'series' (=sets)
         if (type == 'Series') {
@@ -539,7 +539,7 @@ Future<void> _reviewWeekDetailedByDay() async {
         routineCache[routineId] = routine;
       }
 
-      final items = _extractPlannedItemsFromRoutine(routine);
+      final items = extractPlannedItemsFromRoutine(routine);
       plannedByDay.putIfAbsent(day, () => []).addAll(items);
     }
 

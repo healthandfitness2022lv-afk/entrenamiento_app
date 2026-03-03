@@ -631,7 +631,7 @@ void _showExerciseAchievementDetails(
       ],
     ),
   );
-}).toList(),
+}),
 
 
             const SizedBox(height: 10),

@@ -955,7 +955,7 @@ for (int i = 0; i < entries.length; i++) {
                         ),
 
                         Text(
-                          "${value.toStringAsFixed(1)}",
+                          value.toStringAsFixed(1),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,

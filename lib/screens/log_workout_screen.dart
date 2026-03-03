@@ -12,6 +12,9 @@ import '/widgets/series_block_widget.dart';
 import '../widgets/circuit_block_widget.dart';
 import '../widgets/tabata_block_widget.dart';
 import 'dart:math';
+import '../widgets/descending_series_block_widget.dart';
+import '../widgets/buscar_rm_block_widget.dart';
+
 
 class _WorkoutBuildResult {
   final List<Map<String, dynamic>> performed;
@@ -107,12 +110,21 @@ void initState() {
   if (isEdit) {
   _loadWorkoutForEdit();
 } else {
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    _askWorkoutMode();
-  });
+  _loadInitialWorkout();
 }
 
 }
+
+void _onRepsSubmitted(String exercise, int reps) {
+  final key = "$exercise-$reps";
+
+  // 🔥 Elimina cache para forzar recálculo
+  _suggestedWeightCache.remove(key);
+
+  _loadSuggestionIfNeeded(exercise, reps);
+}
+
+
 
 Future<Map<String, dynamic>?> _getTodayPlannedRoutine() async {
   final uid = FirebaseAuth.instance.currentUser!.uid;
@@ -325,7 +337,7 @@ void _hydrateFromPerformed(List<Map<String, dynamic>> performed) {
   int circuitBlockCursor = 0;
 
 for (final e in performed) {
-if (e['type'] == 'Series') {
+if (e['type'] == 'Series' || e['type'] == 'Series descendentes' || e['type'] == 'Buscar RM') {
 
   final int blockIndex =
       (e['blockIndex'] as num?)?.toInt() ?? 0;
@@ -452,8 +464,8 @@ List<Map<String, dynamic>> _rebuildBlocksFromPerformed(
       };
     });
 
-    // ================= SERIES =================
-    if (type == 'Series') {
+    // ================= SERIES Y DESCENDENTES =================
+    if (type == 'Series' || type == 'Series descendentes' || type == 'Buscar RM') {
 
   final List exList =
       (e['exercises'] as List?) ?? const [];
@@ -468,6 +480,13 @@ List<Map<String, dynamic>> _rebuildBlocksFromPerformed(
         (ex['sets'] as List?) ?? const [];
 
     if (name.isEmpty || sets.isEmpty) continue;
+
+    if (type == 'Series descendentes') {
+      blocksMap[blockIndex]!['schema'] = sets.map((s) => s['reps'] as int).toList();
+    }
+    if (type == 'Buscar RM') {
+      blocksMap[blockIndex]!['rm'] = sets.isNotEmpty ? sets.last['reps'] as int : 5;
+    }
 
     blocksMap[blockIndex]!['exercises'].add({
       'name': name,
@@ -562,7 +581,7 @@ List<Map<String, dynamic>> _extractCircuitExercises(
 
   // ================= LOAD =================
 
-  Future<void> _loadAvailableRoutines() async {
+  Future<void> _loadAvailableRoutinesBackground() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
 
     final assignSnap = await FirebaseFirestore.instance
@@ -583,40 +602,49 @@ List<Map<String, dynamic>> _extractCircuitExercises(
         availableRoutines.add({'id': routineSnap.id, ...routineSnap.data()!});
       }
     }
-
-    if (availableRoutines.length == 1) {
-      routine = availableRoutines.first;
-      _initializeRoutineState();
-    } else if (availableRoutines.length > 1) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _selectRoutine();
-      });
-    }
-
-    setState(() => loading = false);
   }
 
-  // ================= SELECT ROUTINE =================
+  Future<void> _loadInitialWorkout() async {
+    final plannedRoutine = await _getTodayPlannedRoutine();
+    
+    // Cargar las demás en segundo plano para el selector desplegable
+    await _loadAvailableRoutinesBackground();
 
-  Future<void> _selectRoutine() async {
-    final selected = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (_) => SimpleDialog(
-        title: const Text("¿Qué entrenamiento vas a realizar?"),
-        children: availableRoutines.map((r) {
-          return SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, r),
-            child: Text(r['name']),
-          );
-        }).toList(),
-      ),
-    );
-
-    if (selected != null) {
-      routine = selected;
-      _initializeRoutineState();
-      setState(() {});
+    if (plannedRoutine != null) {
+      _changeRoutine({
+        'id': plannedRoutine['id'],
+        ...plannedRoutine,
+      });
+    } else {
+      _startFreeWorkout();
     }
+  }
+  
+  void _changeRoutine(Map<String, dynamic>? newRoutine) {
+    seriesData.clear();
+    seriesRepsCtrl.clear();
+    seriesWeightCtrl.clear();
+    expandedBlocks.clear();
+    circuitoRound.clear();
+    circuitoReps.clear();
+    circuitoWeight.clear();
+    circuitoRpePorRonda.clear();
+    circuitoDone.clear();
+    circuitoPerSide.clear();
+    tabataTimer.stop();
+
+    if (newRoutine == null) {
+      routine = {
+        'id': null,
+        'name': 'Entrenamiento libre',
+        'blocks': <Map<String, dynamic>>[],
+      };
+    } else {
+      routine = newRoutine;
+    }
+
+    _initializeRoutineState();
+    if (mounted) setState(() => loading = false);
   }
 
   // ================= INFO =================
@@ -932,6 +960,66 @@ seriesWeightCtrl[key] = List.generate(
 
       }
     }
+
+    // ================= SERIES DESCENDENTES =================
+    if (block['type'] == 'Series descendentes') {
+      final schema = List<int>.from(block['schema'] ?? []);
+
+      for (final ex in block['exercises']) {
+        final name = normalizeExerciseName(ex['name']);
+        final key = "$i-$name";
+
+        seriesData[key] = schema.map((reps) {
+          return {
+            'valueType': 'reps',
+            'value': reps,
+            'reps': reps,
+            'weight': ex['weight'],
+            'rpe': 5,
+            'done': false,
+          };
+        }).toList();
+
+        seriesRepsCtrl[key] = schema.map((reps) {
+          return TextEditingController(text: reps.toString());
+        }).toList();
+
+        seriesWeightCtrl[key] = schema.map((_) {
+          return TextEditingController(text: ex['weight']?.toString() ?? '');
+        }).toList();
+      }
+    }
+
+    // ================= BUSCAR RM =================
+    if (block['type'] == 'Buscar RM') {
+      final int rmTarget = block['rm'] ?? 5;
+
+      for (final ex in block['exercises']) {
+        final name = normalizeExerciseName(ex['name']);
+        final key = "$i-$name";
+
+        final int targetReps = ex['reps'] ?? rmTarget;
+
+        seriesData[key] = [
+          {
+            'valueType': 'reps',
+            'value': targetReps,
+            'reps': targetReps,
+            'weight': ex['weight'],
+            'rpe': 5,
+            'done': false,
+          }
+        ];
+
+        seriesRepsCtrl[key] = [
+          TextEditingController(text: targetReps.toString())
+        ];
+
+        seriesWeightCtrl[key] = [
+          TextEditingController(text: ex['weight']?.toString() ?? '')
+        ];
+      }
+    }
   }
 }
 
@@ -1008,6 +1096,8 @@ seriesWeightCtrl[key] = List.generate(
             _addBlockTile("Series", Icons.repeat),
             _addBlockTile("Circuito", Icons.loop),
             _addBlockTile("Tabata", Icons.timer),
+            _addBlockTile("Series descendentes", Icons.trending_down),
+            _addBlockTile("Buscar RM", Icons.track_changes),
           ],
         ),
       );
@@ -1037,6 +1127,18 @@ Map<String, dynamic> _emptyBlockForType(String type) {
         "rounds": 8,
         "exercises": <Map<String, dynamic>>[],
       };
+      case "Series descendentes":
+  return {
+    "type": "Series descendentes",
+    "schema": [21, 15, 9], // 🔥 editable después si quieres
+    "exercises": <Map<String, dynamic>>[],
+  };
+      case "Buscar RM":
+  return {
+    "type": "Buscar RM",
+    "rm": 5,
+    "exercises": <Map<String, dynamic>>[],
+  };
 
     default:
       return {
@@ -1100,6 +1202,66 @@ void _initializeBlockState(int index, Map<String, dynamic> block) {
     circuitoWeight[index] = {};
     circuitoRpePorRonda[index] = {};
     circuitoDone[index] = {};
+  }
+
+  if (block['type'] == 'Series descendentes') {
+  final schema = List<int>.from(block['schema'] ?? []);
+
+  for (final ex in block['exercises']) {
+    final name = normalizeExerciseName(ex['name']);
+    final key = "$index-$name";
+
+    seriesData[key] = schema.map((reps) {
+      return {
+        'valueType': 'reps',
+        'value': reps,
+        'reps': reps,
+        'weight': ex['weight'],
+        'rpe': 5,
+        'done': false,
+      };
+    }).toList();
+
+    seriesRepsCtrl[key] = schema.map((reps) {
+      return TextEditingController(text: reps.toString());
+    }).toList();
+
+    seriesWeightCtrl[key] = schema.map((_) {
+      return TextEditingController(
+        text: ex['weight']?.toString() ?? '',
+      );
+    }).toList();
+  }
+}
+
+  if (block['type'] == 'Buscar RM') {
+    final int rmTarget = block['rm'] ?? 5;
+
+    for (final ex in block['exercises']) {
+      final name = normalizeExerciseName(ex['name']);
+      final key = "$index-$name";
+
+      final int targetReps = ex['reps'] ?? rmTarget;
+
+      seriesData[key] = [
+        {
+          'valueType': 'reps',
+          'value': targetReps,
+          'reps': targetReps,
+          'weight': ex['weight'],
+          'rpe': 5,
+          'done': false,
+        }
+      ];
+
+      seriesRepsCtrl[key] = [
+        TextEditingController(text: targetReps.toString())
+      ];
+
+      seriesWeightCtrl[key] = [
+        TextEditingController(text: ex['weight']?.toString() ?? '')
+      ];
+    }
   }
 
   if (block['type'] == 'Tabata') {
@@ -1187,6 +1349,8 @@ void _reindexStateAfterDeletion(int deletedIndex) {
 }
 
 
+
+
   // ================= BUILD =================
 
   @override
@@ -1212,7 +1376,23 @@ void _reindexStateAfterDeletion(int deletedIndex) {
 
     return Scaffold(
       appBar: AppBar(
-  title: const Text("Registrar entrenamiento"),
+  title: GestureDetector(
+    onTap: _showRoutineSelectorSheet,
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            routine?['name'] ?? 'Entrenamiento libre',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 4),
+        const Icon(Icons.arrow_drop_down_rounded, size: 28),
+      ],
+    ),
+  ),
   actions: [
     IconButton(
       icon: const Icon(Icons.add_box_outlined),
@@ -1226,6 +1406,17 @@ void _reindexStateAfterDeletion(int deletedIndex) {
 
      body: Stack(
   children: [
+    Positioned.fill(
+      child: Opacity(
+        opacity: 0.2,
+        child: Image.asset(
+          'assets/images/people_training_1.png',
+          fit: BoxFit.cover,
+          colorBlendMode: BlendMode.darken,
+          color: Colors.black54,
+        ),
+      ),
+    ),
     // ================= CONTENIDO NORMAL =================
     ListView(
       padding: const EdgeInsets.all(16),
@@ -1288,6 +1479,7 @@ onPerSideChanged: (blockIndex, exerciseName, value) {
     onInfoPressed: _showExerciseInfo,
     onDeleteExercise: _confirmDeleteExercise,
     onAddExercise: _addExerciseToSeries,
+    onRepsSubmitted: _onRepsSubmitted,
     suggestedWeightText: _suggestedWeightText,
     suggestedRepsText: _suggestedRepsText,
     onPerSideChanged: (blockIndex, exerciseName, value) {
@@ -1315,6 +1507,34 @@ onPerSideChanged: (blockIndex, exerciseName, value) {
 
   ),
 
+
+  if (routine!['blocks'][i]['type'] == 'Series descendentes')
+  DescendingSeriesBlockWidget(
+    index: i,
+    block: routine!['blocks'][i],
+    expanded: expandedBlocks[i] ?? false,
+    seriesData: seriesData,
+    seriesRepsCtrl: seriesRepsCtrl,
+    seriesWeightCtrl: seriesWeightCtrl,
+    normalizeExerciseName: normalizeExerciseName,
+    isPerSide: _isPerSide,
+    onInfoPressed: _showExerciseInfo,
+    onStateChanged: () => setState(() {}),
+  ),
+
+  if (routine!['blocks'][i]['type'] == 'Buscar RM')
+  BuscarRmBlockWidget(
+    index: i,
+    block: routine!['blocks'][i],
+    expanded: expandedBlocks[i] ?? false,
+    seriesData: seriesData,
+    seriesRepsCtrl: seriesRepsCtrl,
+    seriesWeightCtrl: seriesWeightCtrl,
+    normalizeExerciseName: normalizeExerciseName,
+    isPerSide: _isPerSide,
+    onInfoPressed: _showExerciseInfo,
+    onStateChanged: () => setState(() {}),
+  ),
 
           if (routine!['blocks'][i]['type'] == 'Tabata')
   TabataBlockWidget(
@@ -1384,82 +1604,160 @@ int _countCompletedCircuitRounds(
 }
 
 
-Future<void> _askWorkoutMode() async {
-  final plannedRoutine = await _getTodayPlannedRoutine();
+void _startFreeWorkout() {
+  _changeRoutine(null);
+}
 
-  final result = await showDialog<String>(
+void _showRoutineSelectorSheet() async {
+  // Aseguramos que tenemos las rutinas cargadas
+  if (availableRoutines.isEmpty) {
+    await _loadAvailableRoutinesBackground();
+  }
+  
+  if (!mounted) return;
+
+  showModalBottomSheet(
     context: context,
-    barrierDismissible: false,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (_) {
+      return DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.5,
+        maxChildSize: 0.9,
+        minChildSize: 0.3,
+        builder: (_, scrollController) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 5,
+                    decoration: const BoxDecoration(
+                      color: Colors.grey,
+                      borderRadius: BorderRadius.all(Radius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    "Cambiar entrenamiento",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    children: [
+                      ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.tealAccent.withOpacity(0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.fitness_center, color: Colors.tealAccent),
+                        ),
+                        title: const Text("Entrenamiento libre", style: TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: const Text("Añade bloques manualmente"),
+                        onTap: () async {
+                          final ok = await _confirmChangeRoutine();
+                          if (ok && mounted) {
+                            Navigator.pop(context);
+                            _startFreeWorkout();
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      const Divider(),
+                      if (availableRoutines.isNotEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          child: Text(
+                            "Mis rutinas asignadas",
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
+                      ...availableRoutines.map((r) {
+                        final isCurrent = routine != null && routine!['id'] == r['id'];
+                        return ListTile(
+                          leading: Icon(
+                            Icons.list_alt_rounded,
+                            color: isCurrent ? Colors.tealAccent : Colors.grey,
+                          ),
+                          title: Text(
+                            r['name'] ?? 'Rutina',
+                            style: TextStyle(
+                              fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                              color: isCurrent ? Colors.tealAccent : null,
+                            ),
+                          ),
+                          onTap: () async {
+                            if (isCurrent) {
+                              Navigator.pop(context);
+                              return;
+                            }
+                            final ok = await _confirmChangeRoutine();
+                            if (ok && mounted) {
+                              Navigator.pop(context);
+                              _changeRoutine(r);
+                            }
+                          },
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+Future<bool> _confirmChangeRoutine() async {
+  // Solo confirmamos si hay bloques actuales
+  bool hasProgress = routine != null && 
+      (routine!['blocks'] as List).isNotEmpty;
+
+  if (!hasProgress) return true;
+
+  final ok = await showDialog<bool>(
+    context: context,
     builder: (_) => AlertDialog(
-      title: const Text("¿Cómo quieres entrenar hoy?"),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (plannedRoutine != null) ...[
-            const Text(
-              "Tienes un entrenamiento planificado para hoy:",
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              plannedRoutine['name'],
-              style: const TextStyle(color: Colors.blue),
-            ),
-            const SizedBox(height: 16),
-          ],
-        ],
-      ),
+      title: const Text("Cambiar rutina"),
+      content: const Text("Si cambias de rutina, pederás el progreso de la sesión actual no guardada. ¿Continuar?"),
       actions: [
-
-        if (plannedRoutine != null)
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, "planned"),
-            child: const Text("Usar rutina de hoy"),
-          ),
-
         TextButton(
-          onPressed: () => Navigator.pop(context, "routine"),
-          child: const Text("Elegir otra rutina"),
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text("Cancelar"),
         ),
-
-        TextButton(
-          onPressed: () => Navigator.pop(context, "free"),
-          child: const Text("Entrenamiento libre"),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text("Cambiar"),
         ),
       ],
     ),
   );
 
-  if (result == "planned" && plannedRoutine != null) {
-    setState(() {
-      routine = plannedRoutine;
-    });
-    _initializeRoutineState();
-    loading = false;
-    return;
-  }
-
-  if (result == "free") {
-    _startFreeWorkout();
-    return;
-  }
-
-  await _loadAvailableRoutines();
-}
-
-
-void _startFreeWorkout() {
-  setState(() {
-    routine = {
-      'id': null,
-      'name': 'Entrenamiento libre',
-      'blocks': <Map<String, dynamic>>[],
-    };
-  });
-
-  _initializeRoutineState();
-  loading = false;
+  return ok == true;
 }
 
 bool _isCircuitRoundCompleted(
@@ -1673,8 +1971,11 @@ Future<void> _processSeries(
 
   for (final entry in seriesData.entries) {
     
+    
     final key = entry.key;
 final blockIndex = int.parse(key.split('-').first);
+final block = routine!['blocks'][blockIndex];
+final blockType = block['type'] ?? 'Series';
 final exerciseName = key.split('-').sublist(1).join('-');
 
 
@@ -1740,7 +2041,7 @@ final existingBlock = performed.firstWhere(
 
 if (existingBlock.isEmpty) {
   performed.add({
-    'type': 'Series',
+    'type': blockType,
     'blockIndex': blockIndex,
     'blockTitle': block['title'] ?? block['name'] ?? 'Series',
     'exercises': [],

@@ -5,6 +5,23 @@ import 'package:flutter/foundation.dart';
 enum TabataPhase { work, rest, finished }
 
 class TabataTimerService extends ChangeNotifier {
+  late final AudioPlayer _audioPlayer;
+
+  TabataTimerService() {
+    _audioPlayer = AudioPlayer();
+    if (!kIsWeb) {
+      _audioPlayer.setAudioContext(
+        AudioContext(
+          android: AudioContextAndroid(
+            usageType: AndroidUsageType.alarm,
+            contentType: AndroidContentType.music,
+            audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+          ),
+        ),
+      );
+    }
+  }
+
   // =========================================================
   // ⏱ TIMER CORE
   // =========================================================
@@ -37,30 +54,11 @@ class TabataTimerService extends ChangeNotifier {
   // 🔊 AUDIO
   // =========================================================
 
-  AudioPlayer _createPlayer() {
-    final player = AudioPlayer();
-
-    if (!kIsWeb) {
-      player.setAudioContext(
-        AudioContext(
-          android: AudioContextAndroid(
-            usageType: AndroidUsageType.alarm,
-            contentType: AndroidContentType.music,
-            audioFocus: AndroidAudioFocus.gainTransientMayDuck,
-          ),
-        ),
-      );
-    }
-
-    return player;
-  }
-
   Future<void> _play(String asset) async {
     try {
-      final player = _createPlayer();
-      await player.setVolume(1.0);
-      await player.setReleaseMode(ReleaseMode.stop);
-      await player.play(AssetSource(asset));
+      await _audioPlayer.setVolume(1.0);
+      await _audioPlayer.setReleaseMode(ReleaseMode.stop);
+      await _audioPlayer.play(AssetSource(asset));
     } catch (e) {
       debugPrint("Audio error: $e");
     }
@@ -268,6 +266,7 @@ void resetBlock(int blockIndex) {
   @override
   void dispose() {
     stop();
+    _audioPlayer.dispose();
     super.dispose();
   }
 }

@@ -6,7 +6,7 @@ class SeriesBlockWidget extends StatelessWidget {
   final bool expanded;
   final void Function(int blockIndex, String exercise, bool value)
     onPerSideChanged;
-
+  final void Function(String exercise, int reps) onRepsSubmitted;
   final Map<String, List<Map<String, dynamic>>> seriesData;
   final Map<String, List<TextEditingController>> seriesRepsCtrl;
   final Map<String, List<TextEditingController>> seriesWeightCtrl;
@@ -24,27 +24,26 @@ class SeriesBlockWidget extends StatelessWidget {
   final Widget Function(String, int) suggestedWeightText;
   final Widget Function(String, double) suggestedRepsText;
 
-  const SeriesBlockWidget({
-    super.key,
-    required this.index,
-    required this.block,
-    required this.expanded,
-    required this.seriesData,
-    required this.seriesRepsCtrl,
-    required this.seriesWeightCtrl,
-    required this.normalizeExerciseName,
-    required this.getEquipment,
-    required this.isPerSide,
-    required this.onInfoPressed,
-    required this.onDeleteExercise,
-    required this.onAddExercise,
-    required this.suggestedWeightText,
-    required this.suggestedRepsText,
-    required this.onStateChanged,
-    required this.onPerSideChanged,
-
-  });
-
+ const SeriesBlockWidget({
+  super.key,
+  required this.index,
+  required this.block,
+  required this.expanded,
+  required this.seriesData,
+  required this.seriesRepsCtrl,
+  required this.seriesWeightCtrl,
+  required this.normalizeExerciseName,
+  required this.getEquipment,
+  required this.isPerSide,
+  required this.onInfoPressed,
+  required this.onDeleteExercise,
+  required this.onAddExercise,
+  required this.suggestedWeightText,
+  required this.suggestedRepsText,
+  required this.onRepsSubmitted,
+  required this.onStateChanged,
+  required this.onPerSideChanged,
+});
   @override
   Widget build(BuildContext context) {
     if (!expanded) return const SizedBox();
@@ -71,6 +70,7 @@ class SeriesBlockWidget extends StatelessWidget {
   Widget _buildExercise(BuildContext context, Map<String, dynamic> ex) {
     final String name = normalizeExerciseName(ex['name']);
     final String key = "$index-$name";
+
 
     if (!seriesData.containsKey(key) ||
         seriesData[key]!.isEmpty ||
@@ -135,26 +135,6 @@ class SeriesBlockWidget extends StatelessWidget {
             color: Colors.grey.shade600,
           ),
         ),
-
-      const SizedBox(height: 4),
-
-      // 🔥 SUGERENCIA DE PESO
-      suggestedWeightText(
-        name,
-        seriesRepsCtrl[key]![0].text.isNotEmpty
-            ? int.tryParse(seriesRepsCtrl[key]![0].text) ?? 0
-            : 0,
-      ),
-
-      const SizedBox(height: 2),
-
-      // 🔥 SUGERENCIA DE REPS
-      suggestedRepsText(
-        name,
-        seriesWeightCtrl[key]![0].text.isNotEmpty
-            ? double.tryParse(seriesWeightCtrl[key]![0].text) ?? 0
-            : 0,
-      ),
     ],
   ),
 ),
@@ -250,78 +230,106 @@ Row(
   }
 
   TableRow _buildRow(
-    BuildContext context,
-    String key,
-    String name,
-    int i,
-  ) {
-    return TableRow(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(4),
-          child: Text("${i + 1}"),
-        ),
+  BuildContext context,
+  String key,
+  String name,
+  int i,
+) {
+  return TableRow(
+    children: [
+      // 🔢 Número de serie
+      Padding(
+        padding: const EdgeInsets.all(4),
+        child: Text("${i + 1}"),
+      ),
 
-        Padding(
-          padding: const EdgeInsets.all(4),
-          child: TextField(
-  controller: seriesRepsCtrl[key]![i],
-  keyboardType: TextInputType.number,
-  textInputAction: TextInputAction.done,
-  onSubmitted: (_) {
-    FocusScope.of(context).unfocus();
-    onStateChanged();
-  },
-),
+      // 🔥 REPS + SUGERENCIA DE PESO
+      Padding(
+        padding: const EdgeInsets.all(4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: seriesRepsCtrl[key]![i],
+              keyboardType: TextInputType.number,
+              onChanged: (value) {
+                final reps = int.tryParse(value);
 
-        ),
+                if (reps != null && reps > 0) {
+                  onRepsSubmitted(name, reps);
+                }
 
-        Padding(
-          padding: const EdgeInsets.all(4),
-          child: TextField(
-  controller: seriesWeightCtrl[key]![i],
-  keyboardType: TextInputType.number,
-  onSubmitted: (_) {
-    FocusScope.of(context).unfocus();
-    onStateChanged();
-  },
-),
-
-        ),
-
-        Padding(
-          padding: const EdgeInsets.all(4),
-          child: DropdownButton<int>(
-            value: seriesData[key]![i]['rpe'],
-            items: List.generate(
-              10,
-              (r) => DropdownMenuItem(
-                value: r + 1,
-                child: Text("${r + 1}"),
-              ),
+                onStateChanged();
+              },
             ),
-            onChanged: (v) {
-  seriesData[key]![i]['rpe'] = v!;
-  onStateChanged();
-},
+            const SizedBox(height: 4),
 
-          ),
+            // 🔥 sugerencia peso según reps
+            suggestedWeightText(
+              name,
+              int.tryParse(seriesRepsCtrl[key]![i].text) ?? 0,
+            ),
+          ],
         ),
+      ),
 
-        Padding(
-          padding: const EdgeInsets.all(4),
-          child: Checkbox(
-            value: seriesData[key]![i]['done'],
-            onChanged: (v) {
-  seriesData[key]![i]['done'] = v!;
-  onStateChanged();
-},
+      // 🏋️ PESO + SUGERENCIA DE REPS
+      Padding(
+        padding: const EdgeInsets.all(4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: seriesWeightCtrl[key]![i],
+              keyboardType: TextInputType.number,
+              onChanged: (value) {
+                onStateChanged();
+              },
+            ),
+            const SizedBox(height: 4),
 
-          ),
+            // 🔥 sugerencia reps según peso
+            suggestedRepsText(
+              name,
+              double.tryParse(seriesWeightCtrl[key]![i].text) ?? 0,
+            ),
+          ],
         ),
-      ],
-    );
-    
-  }
+      ),
+
+      // 🎯 RPE
+      Padding(
+        padding: const EdgeInsets.all(4),
+        child: DropdownButton<int>(
+          value: seriesData[key]![i]['rpe'],
+          isExpanded: true,
+          items: List.generate(
+            10,
+            (r) => DropdownMenuItem(
+              value: r + 1,
+              child: Text("${r + 1}"),
+            ),
+          ),
+          onChanged: (v) {
+            seriesData[key]![i]['rpe'] = v!;
+            onStateChanged();
+          },
+        ),
+      ),
+
+      // ✔ DONE
+      Padding(
+        padding: const EdgeInsets.all(4),
+        child: Checkbox(
+          value: seriesData[key]![i]['done'],
+          onChanged: (v) {
+            seriesData[key]![i]['done'] = v!;
+            onStateChanged();
+          },
+        ),
+      ),
+    ],
+  );
+}
   
 }

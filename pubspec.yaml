@@ -36,6 +36,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/images/
     - assets/svg/body_front.svg
     - assets/svg/body_back.svg
     - assets/sounds/work.wav

@@ -21,7 +21,7 @@ class _ExercisesScreenState extends State<ExercisesScreen>
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = "";
 
-  String _selectedEquipment = "Todos";
+  final String _selectedEquipment = "Todos";
   Muscle? _selectedMuscle; // null = Todos
 
   final List<String> _types = [

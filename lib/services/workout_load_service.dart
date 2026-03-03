@@ -193,7 +193,10 @@ if (e['type'] == 'Series') {
         final key = k.toString();
         final value = (v as num).toDouble();
 
-        final match = Muscle.values.where((m) => m.name == key);
+        String normalizedKey = key;
+        if (key == 'traps') normalizedKey = 'trapsUpper';
+
+        final match = Muscle.values.where((m) => m.name == normalizedKey);
 
         if (match.isNotEmpty) {
           result[match.first] = (result[match.first] ?? 0) + value;

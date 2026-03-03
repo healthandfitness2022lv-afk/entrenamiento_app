@@ -68,7 +68,9 @@ class WorkoutRMService {
             if (repsRaw is! num ||
                 weightRaw is! num ||
                 repsRaw <= 0 ||
-                weightRaw <= 0) continue;
+                weightRaw <= 0) {
+              continue;
+            }
 
             final int reps = repsRaw.toInt();
             final double weight = weightRaw.toDouble();
@@ -114,7 +116,9 @@ class WorkoutRMService {
             if (repsRaw is! num ||
                 weightRaw is! num ||
                 repsRaw <= 0 ||
-                weightRaw <= 0) continue;
+                weightRaw <= 0) {
+              continue;
+            }
 
             final int reps = repsRaw.toInt();
             final double weight = weightRaw.toDouble();

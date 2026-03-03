@@ -181,22 +181,25 @@ Map<Muscle, double> load = {};
 // 1) Si ya existe muscleLoad en el workout y NO quieres recalcular, úsalo
 final raw = data['muscleLoad'];
 
-Map<Muscle, double> _decodeLoad(dynamic rawMap) {
+Map<Muscle, double> decodeLoad(dynamic rawMap) {
   if (rawMap is! Map) return {};
   final m = Map<String, dynamic>.from(rawMap);
   final out = <Muscle, double>{};
 
   for (final e in m.entries) {
     final key = e.key;
-    final matches = Muscle.values.where((x) => x.name == key);
-    if (matches.isEmpty) continue;
-    out[matches.first] = (e.value as num).toDouble();
+    try {
+      final muscle = _decodeMuscle(key);
+      out[muscle] = (e.value as num).toDouble();
+    } catch (_) {
+      // Ignorar músculos desconocidos
+    }
   }
   return out;
 }
 
 if (!forceRecalculateLoad && raw != null) {
-  load = _decodeLoad(raw);
+  load = decodeLoad(raw);
 } else {
   // 2) Si falta muscleLoad, intenta calcularlo; si falla, queda vacío
   try {

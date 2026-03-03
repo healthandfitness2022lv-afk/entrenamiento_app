@@ -6,7 +6,7 @@ class WorkoutSuggestionService {
   required String userId,
   required String exercise,
   required double targetWeight,
-  double tolerance = 0.5, // margen por decimales
+  double tolerance = 0.5,
 }) async {
   final snap = await FirebaseFirestore.instance
       .collection('workouts_logged')
@@ -16,26 +16,35 @@ class WorkoutSuggestionService {
   int? maxReps;
 
   for (final doc in snap.docs) {
-    final performed = List<Map<String, dynamic>>.from(doc['performed']);
+    final performed = List<Map<String, dynamic>>.from(
+      doc['performed'] ?? [],
+    );
 
-    for (final e in performed) {
-      if (e['type'] != 'Series') continue;
-      if (e['exercise'] != exercise) continue;
+    for (final block in performed) {
+      if (block['type'] != 'Series') continue;
 
-      final sets = List<Map<String, dynamic>>.from(e['sets']);
+      final exercises = List<Map<String, dynamic>>.from(
+        block['exercises'] ?? [],
+      );
 
-      for (final s in sets) {
-        if (s['done'] != true) continue;
+      for (final ex in exercises) {
+        final name = ex['exercise']?.toString().trim().toLowerCase();
+        if (name != exercise.trim().toLowerCase()) continue;
 
-        final weight = (s['weight'] as num?)?.toDouble();
-        final reps = (s['reps'] as num?)?.toInt();
+        final sets = List<Map<String, dynamic>>.from(
+          ex['sets'] ?? [],
+        );
 
-        if (weight == null || reps == null) continue;
+        for (final s in sets) {
+          final weight = (s['weight'] as num?)?.toDouble();
+          final reps = (s['reps'] as num?)?.toInt();
 
-        // comparación con tolerancia
-        if ((weight - targetWeight).abs() <= tolerance) {
-          if (maxReps == null || reps > maxReps) {
-            maxReps = reps;
+          if (weight == null || reps == null) continue;
+
+          if ((weight - targetWeight).abs() <= tolerance) {
+            if (maxReps == null || reps > maxReps) {
+              maxReps = reps;
+            }
           }
         }
       }
@@ -45,37 +54,45 @@ class WorkoutSuggestionService {
   return maxReps;
 }
 
-
   static Future<double?> suggestWeightForReps({
-    required String userId,
-    required String exercise,
-    required int targetReps,
-  }) async {
-    if (targetReps <= 0) return null;
+  required String userId,
+  required String exercise,
+  required int targetReps,
+}) async {
+  if (targetReps <= 0) return null;
 
-    final snap = await FirebaseFirestore.instance
-        .collection('workouts_logged')
-        .where('userId', isEqualTo: userId)
-        .get();
+  final snap = await FirebaseFirestore.instance
+      .collection('workouts_logged')
+      .where('userId', isEqualTo: userId)
+      .get();
 
-    double? best;
+  double? best;
 
-    for (final doc in snap.docs) {
-      final data = doc.data();
-      final performed = List<Map<String, dynamic>>.from(
-        data['performed'] ?? [],
-      );
+  final normalizedExercise = exercise.trim().toLowerCase();
 
-      for (final e in performed) {
-        final type = e['type'];
+  for (final doc in snap.docs) {
+    final performed = List<Map<String, dynamic>>.from(
+      doc['performed'] ?? [],
+    );
 
-        // ======================================================
-        // 🟢 SERIES
-        // ======================================================
-        if (type == 'Series') {
-          if (e['exercise'] != exercise) continue;
+    for (final block in performed) {
+      final type = block['type'];
 
-          final sets = List<Map<String, dynamic>>.from(e['sets'] ?? []);
+      // ================= SERIES =================
+      if (type == 'Series') {
+        final exercises = List<Map<String, dynamic>>.from(
+          block['exercises'] ?? [],
+        );
+
+        for (final ex in exercises) {
+          final name =
+              ex['exercise']?.toString().trim().toLowerCase();
+
+          if (name != normalizedExercise) continue;
+
+          final sets = List<Map<String, dynamic>>.from(
+            ex['sets'] ?? [],
+          );
 
           for (final s in sets) {
             final reps = s['reps'];
@@ -89,38 +106,40 @@ class WorkoutSuggestionService {
             }
           }
         }
+      }
 
-        // ======================================================
-        // 🔵 CIRCUITOS
-        // ======================================================
-        if (type == 'Circuito') {
-          final rounds = List<Map<String, dynamic>>.from(
-            e['rounds'] ?? [],
+      // ================= CIRCUITO =================
+      if (type == 'Circuito') {
+        final rounds = List<Map<String, dynamic>>.from(
+          block['rounds'] ?? [],
+        );
+
+        for (final r in rounds) {
+          final exercises = List<Map<String, dynamic>>.from(
+            r['exercises'] ?? [],
           );
 
-          for (final r in rounds) {
-            final exercises = List<Map<String, dynamic>>.from(
-              r['exercises'] ?? [],
-            );
+          for (final ex in exercises) {
+            final name =
+                ex['exercise']?.toString().trim().toLowerCase();
 
-            for (final ex in exercises) {
-              if (ex['exercise'] != exercise) continue;
+            if (name != normalizedExercise) continue;
 
-              final reps = ex['reps'];
-              final weight = ex['weight'];
+            final reps = ex['reps'];
+            final weight = ex['weight'];
 
-              if (reps == targetReps && weight != null) {
-                final w = (weight as num).toDouble();
-                if (best == null || w > best) {
-                  best = w;
-                }
+            if (reps == targetReps && weight != null) {
+              final w = (weight as num).toDouble();
+              if (best == null || w > best) {
+                best = w;
               }
             }
           }
         }
       }
     }
-
-    return best; // null si no hay historial
   }
+
+  return best;
+}
 }

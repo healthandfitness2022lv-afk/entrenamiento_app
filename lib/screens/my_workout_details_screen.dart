@@ -800,30 +800,28 @@ totalAcc[e.key] =
         // ===============================
         if (musclesSorted.isNotEmpty)
           Text(
-            "   " +
-                musclesSorted
+            "   ${musclesSorted
                     .map(
                       (e) =>
                           "${e.key.label}: +${e.value.toStringAsFixed(2)}",
                     )
-                    .join(" · "),
+                    .join(" · ")}",
             style: const TextStyle(fontSize: 11),
           ),
       ],
     ),
   );
-}).toList(),
+}),
 
 const SizedBox(height: 6),
 
 if (circuitAcc.isNotEmpty)
   Text(
-    "Total circuito ${index + 1}: " +
-        (circuitAcc.entries.toList()
+    "Total circuito ${index + 1}: ${(circuitAcc.entries.toList()
           ..sort((a, b) => b.value.compareTo(a.value)))
             .map((e) =>
                 "${e.key.label}: ${e.value.toStringAsFixed(2)}")
-            .join(" · "),
+            .join(" · ")}",
     style: TextStyle(
       fontSize: 12,
       fontWeight: FontWeight.bold,
@@ -833,7 +831,7 @@ if (circuitAcc.isNotEmpty)
                   ],
                 ),
               );
-            }).toList(),
+            }),
           ],
         ),
       );
@@ -997,21 +995,20 @@ Text(
                       ),
 
                       Text(
-                        "  " +
-                            musclesSorted
+                        "  ${musclesSorted
                                 .map((e) =>
                                     "${e.key.label}: +${e.value.toStringAsFixed(2)}")
-                                .join(" · "),
+                                .join(" · ")}",
                         style: const TextStyle(fontSize: 12),
                       ),
                     ],
                   ),
                 );
-              }).toList(),
+              }),
             ],
           ),
         );
-      }).toList(),
+      }),
 
       const Divider(),
 

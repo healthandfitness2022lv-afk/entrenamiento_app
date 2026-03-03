@@ -100,6 +100,12 @@ class _AddRoutineScreenState extends State<AddRoutineScreen> {
       return "Circuito ${b["rounds"]} rondas";
     case "EMOM":
       return "EMOM ${b["time"]}s x ${b["rounds"]}";
+    case "Series descendentes":
+  final schema = List<int>.from(b["schema"] ?? []);
+  return schema.join('-');
+    case "Buscar RM":
+      final rm = b["rm"] ?? 5;
+      return "Buscar ${rm}RM (${(b["exercises"] as List).length} ejercicios)";
     case "Series":
       return "Series (${(b["exercises"] as List).length} ejercicios)";
     default:
@@ -116,11 +122,7 @@ class _AddRoutineScreenState extends State<AddRoutineScreen> {
     context,
     MaterialPageRoute(
       builder: (_) => AddWorkoutScreen(
-        initialBlock: {
-          "type": type,
-          "title": "", // 👈 nuevo campo
-          "exercises": [],
-        },
+        initialBlock: _emptyBlockForType(type),
       ),
     ),
   );
@@ -130,6 +132,58 @@ class _AddRoutineScreenState extends State<AddRoutineScreen> {
   setState(() {
     routineBlocks.add(Map<String, dynamic>.from(newBlock));
   });
+}
+
+Map<String, dynamic> _emptyBlockForType(String type) {
+  switch (type) {
+    case "Series descendentes":
+      return {
+        "type": "Series descendentes",
+        "title": "",
+        "schema": [21, 15, 9], // 🔥 default ladder
+        "exercises": [],
+      };
+
+    case "Buscar RM":
+      return {
+        "type": "Buscar RM",
+        "title": "",
+        "rm": 5, // Default RM a buscar
+        "exercises": [],
+      };
+
+    case "Series":
+      return {
+        "type": "Series",
+        "title": "",
+        "exercises": [],
+      };
+
+    case "Circuito":
+      return {
+        "type": "Circuito",
+        "title": "",
+        "rounds": 3,
+        "exercises": [],
+      };
+
+    case "Tabata":
+      return {
+        "type": "Tabata",
+        "title": "",
+        "work": 20,
+        "rest": 10,
+        "rounds": 8,
+        "exercises": [],
+      };
+
+    default:
+      return {
+        "type": type,
+        "title": "",
+        "exercises": [],
+      };
+  }
 }
 
 
@@ -179,6 +233,8 @@ class _AddRoutineScreenState extends State<AddRoutineScreen> {
             _blockTypeTile("Circuito"),
             _blockTypeTile("EMOM"),
             _blockTypeTile("Series"),
+            _blockTypeTile("Series descendentes"),
+            _blockTypeTile("Buscar RM"),
             const SizedBox(height: 12),
           ],
         ),
@@ -279,7 +335,7 @@ Widget _blockTile(int index) {
             ),
           ),
 
-        ...exercises.map((e) => _exerciseRow(e)).toList(),
+        ...exercises.map((e) => _exerciseRow(e)),
 
         const Divider(),
 
@@ -315,7 +371,7 @@ Widget _exerciseRow(Map<String, dynamic> e) {
   }
 
   final parts = <String>[
-    if (series != null) "${series}×",
+    if (series != null) "$series×",
     valueText,
     if (weightText.isNotEmpty) "${weightText}kg",
   ];

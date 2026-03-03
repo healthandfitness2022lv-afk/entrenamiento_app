@@ -2,14 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 
-
 class AddWorkoutScreen extends StatefulWidget {
   final Map<String, dynamic>? initialBlock;
 
-  const AddWorkoutScreen({
-    super.key,
-    this.initialBlock,
-  });
+  const AddWorkoutScreen({super.key, this.initialBlock});
 
   @override
   State<AddWorkoutScreen> createState() => _AddWorkoutScreenState();
@@ -25,6 +21,10 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   final roundsCtrl = TextEditingController();
   final emomTimeCtrl = TextEditingController();
   final descriptionCtrl = TextEditingController();
+  final schemaCtrl = TextEditingController();
+  final rmCtrl = TextEditingController();
+  List<QueryDocumentSnapshot> _allExercises = [];
+bool _loadedExercises = false;
 
   // ===== Ejercicio =====
   String? exerciseName;
@@ -35,7 +35,6 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   final repsCtrl = TextEditingController();
   final weightCtrl = TextEditingController();
   late TextEditingController titleController;
-
 
   String valueType = "reps"; // 👈 NUEVO
   bool perSide = false;
@@ -48,186 +47,227 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   // =====================================================
 
   @override
-void initState() {
-  super.initState();
+  void initState() {
+    super.initState();
+      _loadExercises();
 
-  final b = widget.initialBlock;
-  if (b == null) return;
 
-  blockType = b["type"];
+    final b = widget.initialBlock;
+    if (b == null) return;
 
-  if (blockType == "Tabata") {
-    valueType = "time"; // 🔥 fuerza tiempo
+    blockType = b["type"];
+
+    if (blockType == "Tabata") {
+      valueType = "time"; // 🔥 fuerza tiempo
+    }
+    if (blockType == "Series descendentes") {
+      final schema = List<int>.from(b["schema"] ?? [21, 15, 9]);
+      schemaCtrl.text = schema.join("-");
+    }
+    if (blockType == "Buscar RM") {
+      rmCtrl.text = b["rm"]?.toString() ?? "5";
+    }
+
+    titleController = TextEditingController(
+      text: widget.initialBlock?['title'] ?? '',
+    );
+    descriptionCtrl.text = widget.initialBlock?['description'] ?? '';
+
+    final exercises = List<Map<String, dynamic>>.from(
+      b["exercises"] ?? const [],
+    );
+
+    currentExercises.addAll(exercises);
+
+    workCtrl.text = b["work"]?.toString() ?? "";
+    restCtrl.text = b["rest"]?.toString() ?? "";
+    roundsCtrl.text = b["rounds"]?.toString() ?? "";
+    emomTimeCtrl.text = b["time"]?.toString() ?? "";
   }
-  titleController = TextEditingController(
-  text: widget.initialBlock?['title'] ?? '',
-);
-descriptionCtrl.text = widget.initialBlock?['description'] ?? '';
 
+  @override
+  void dispose() {
+    workCtrl.dispose();
+    restCtrl.dispose();
+    roundsCtrl.dispose();
+    emomTimeCtrl.dispose();
+    schemaCtrl.dispose();
+    rmCtrl.dispose();
 
-  final exercises =
-    List<Map<String, dynamic>>.from(b["exercises"] ?? const []);
+    seriesCtrl.dispose();
+    repsCtrl.dispose();
+    weightCtrl.dispose();
 
-currentExercises.addAll(exercises);
+    titleController.dispose();
+    descriptionCtrl.dispose();
 
-  workCtrl.text = b["work"]?.toString() ?? "";
-  restCtrl.text = b["rest"]?.toString() ?? "";
-  roundsCtrl.text = b["rounds"]?.toString() ?? "";
-  emomTimeCtrl.text = b["time"]?.toString() ?? "";
+    super.dispose();
+  }
+
+  Future<void> _loadExercises() async {
+  final snap = await FirebaseFirestore.instance
+      .collection("exercises")
+      .get();
+
+  _allExercises = snap.docs;
+
+  _allExercises.sort(
+    (a, b) => (a["name"] as String)
+        .compareTo(b["name"] as String),
+  );
+
+  setState(() {
+    _loadedExercises = true;
+  });
 }
-
-@override
-void dispose() {
-  workCtrl.dispose();
-  restCtrl.dispose();
-  roundsCtrl.dispose();
-  emomTimeCtrl.dispose();
-
-  seriesCtrl.dispose();
-  repsCtrl.dispose();
-  weightCtrl.dispose();
-
-  titleController.dispose();
-  descriptionCtrl.dispose();
-
-  super.dispose();
-}
-
-
-
 
   // =====================================================
   // GUARDAR BLOQUE
   // =====================================================
 
   void _saveBlock() {
-  if (blockType == null || currentExercises.isEmpty) {
-    _snack("Bloque incompleto");
-    return;
+    if (blockType == null || currentExercises.isEmpty) {
+      _snack("Bloque incompleto");
+      return;
+    }
+
+    final block = {
+      "type": blockType,
+      "title": titleController.text.trim(),
+      "description": descriptionCtrl.text.trim(), // 👈 NUEVO
+      "exercises": List<Map<String, dynamic>>.from(currentExercises),
+    };
+
+    if (blockType == "Tabata") {
+      block.addAll({
+        "work": int.tryParse(workCtrl.text) ?? 0,
+        "rest": int.tryParse(restCtrl.text) ?? 0,
+        "rounds": int.tryParse(roundsCtrl.text) ?? 0,
+      });
+    }
+
+    if (blockType == "Circuito") {
+      block["rounds"] = int.tryParse(roundsCtrl.text) ?? 1;
+    }
+
+    if (blockType == "Series descendentes") {
+      final schema = _parseSchema(schemaCtrl.text);
+
+      if (schema.isEmpty) {
+        _snack("Esquema inválido");
+        return;
+      }
+
+      block["schema"] = schema;
+    }
+
+    if (blockType == "Buscar RM") {
+      block["rm"] = int.tryParse(rmCtrl.text) ?? 5;
+    }
+
+    if (blockType == "EMOM") {
+      block.addAll({
+        "time": int.tryParse(emomTimeCtrl.text) ?? 60,
+        "rounds": int.tryParse(roundsCtrl.text) ?? 1,
+      });
+    }
+
+    editingExerciseIndex = null;
+    Navigator.pop(context, block);
   }
-
-  final block = {
-  "type": blockType,
-  "title": titleController.text.trim(),
-  "description": descriptionCtrl.text.trim(), // 👈 NUEVO
-  "exercises": List<Map<String, dynamic>>.from(currentExercises),
-};
-
-  if (blockType == "Tabata") {
-    block.addAll({
-      "work": int.tryParse(workCtrl.text) ?? 0,
-      "rest": int.tryParse(restCtrl.text) ?? 0,
-      "rounds": int.tryParse(roundsCtrl.text) ?? 0,
-    });
-  }
-
-  if (blockType == "Circuito") {
-    block["rounds"] = int.tryParse(roundsCtrl.text) ?? 1;
-  }
-
-  if (blockType == "EMOM") {
-    block.addAll({
-      "time": int.tryParse(emomTimeCtrl.text) ?? 60,
-      "rounds": int.tryParse(roundsCtrl.text) ?? 1,
-    });
-  }
-
-  editingExerciseIndex = null;
-  Navigator.pop(context, block);
-}
-
 
   // =====================================================
   // AGREGAR / EDITAR EJERCICIO
   // =====================================================
 
   void _editExercise(int index) {
-  final e = currentExercises[index];
+    final e = currentExercises[index];
 
-  setState(() {
-    editingExerciseIndex = index;
+    setState(() {
+      editingExerciseIndex = index;
 
-    exerciseName = e["name"];
-    seriesCtrl.text = e["series"]?.toString() ?? "";
-    repsCtrl.text = e["value"]?.toString() ?? "";
-    valueType = e["valueType"] ?? "reps";
-    perSide = e["perSide"] ?? false;
+      exerciseName = e["name"];
+      seriesCtrl.text = e["series"]?.toString() ?? "";
+      repsCtrl.text = e["value"]?.toString() ?? "";
+      valueType = e["valueType"] ?? "reps";
+      perSide = e["perSide"] ?? false;
 
-    selectedEquipment = e["equipment"];
-    availableEquipment =
-        selectedEquipment != null ? [selectedEquipment!] : [];
-  });
-}
-
-
-void _reorderExercises(int oldIndex, int newIndex) {
-  setState(() {
-    if (newIndex > oldIndex) newIndex--;
-    final item = currentExercises.removeAt(oldIndex);
-    currentExercises.insert(newIndex, item);
-  });
-}
-
-num _parseWeight(String raw) {
-  final cleaned = raw.replaceAll(',', '.').trim();
-
-  if (cleaned.isEmpty) return 1;
-
-  final parsed = double.tryParse(cleaned) ?? 1;
-
-  if (parsed % 1 == 0) {
-    return parsed.toInt();
+      selectedEquipment = e["equipment"];
+      availableEquipment = selectedEquipment != null
+          ? [selectedEquipment!]
+          : [];
+    });
   }
 
-  return double.parse(parsed.toStringAsFixed(2));
-}
+  void _reorderExercises(int oldIndex, int newIndex) {
+    setState(() {
+      if (newIndex > oldIndex) newIndex--;
+      final item = currentExercises.removeAt(oldIndex);
+      currentExercises.insert(newIndex, item);
+    });
+  }
 
+  num _parseWeight(String raw) {
+    final cleaned = raw.replaceAll(',', '.').trim();
 
+    if (cleaned.isEmpty) return 1;
 
-void _addExercise() {
+    final parsed = double.tryParse(cleaned) ?? 1;
+
+    if (parsed % 1 == 0) {
+      return parsed.toInt();
+    }
+
+    return double.parse(parsed.toStringAsFixed(2));
+  }
+
+  void _addExercise() {
     if (exerciseName == null) {
-  _snack("Selecciona un ejercicio");
-  return;
-}
+      _snack("Selecciona un ejercicio");
+      return;
+    }
 
-if (valueType == "time") {
-  perSide = false; // tiempo nunca es por lado
-}
+    if (valueType == "time") {
+      perSide = false;
+    }
 
+    if (blockType != "Tabata" &&
+        blockType != "Series descendentes" &&
+        blockType != "Buscar RM" &&
+        repsCtrl.text.isEmpty) {
+      _snack("Ingresa reps o tiempo");
+      return;
+    }
 
-if (blockType != "Tabata" && repsCtrl.text.isEmpty) {
-  _snack("Ingresa reps o tiempo");
-  return;
-}
+    final int parsedValue = int.tryParse(repsCtrl.text) ?? 0;
+    final num parsedWeight = _parseWeight(weightCtrl.text);
 
- final int parsedValue = int.tryParse(repsCtrl.text) ?? 0;
- final num parsedWeight = _parseWeight(weightCtrl.text);
+    Map<String, dynamic> ex = {
+      "name": exerciseName,
+      "perSide": perSide,
+      "equipment": selectedEquipment,
+      "weight": parsedWeight,
+    };
 
+    // 🔥 SERIES NORMALES
+    if (blockType == "Series") {
+      ex.addAll({
+        "series": int.tryParse(seriesCtrl.text) ?? 1,
+        "value": parsedValue,
+        "valueType": valueType,
+        if (valueType == "reps") "reps": parsedValue,
+      });
+    }
 
+    // 🔥 CIRCUITO / EMOM
+    if (blockType == "Circuito" || blockType == "EMOM") {
+      ex.addAll({"value": parsedValue, "valueType": valueType});
+    }
 
-
-final ex = {
-  "name": exerciseName,
-  "series": blockType == "Series"
-      ? int.tryParse(seriesCtrl.text) ?? 1
-      : null,
-
-  // 🔁 COMPATIBILIDAD TOTAL
-  if (blockType != "Tabata") ...{
-    "value": parsedValue,
-    "valueType": valueType,
-
-    // 👇 CAMPO LEGACY
-    if (valueType == "reps") "reps": parsedValue,
-  },
-
-  "perSide": perSide,
-  "equipment": selectedEquipment,
-  "weight": parsedWeight,
-
-};
-
-
+    // 🔥 SERIES DESCENDENTES Y BUSCAR RM
+    if (blockType == "Series descendentes" || blockType == "Buscar RM") {
+      // solo peso base y datos del ejercicio
+    }
 
     setState(() {
       if (editingExerciseIndex != null) {
@@ -241,90 +281,106 @@ final ex = {
   }
 
   void _clearExerciseForm() {
-  exerciseName = null;
-  selectedEquipment = null;
-  availableEquipment.clear();
-  searchQuery = "";
-  seriesCtrl.clear();
-  repsCtrl.clear();
-  weightCtrl.text = "0"; // 👈 default SOLO nuevo
-
-  valueType = "reps";
-  perSide = false;
-}
-
+    exerciseName = null;
+    selectedEquipment = null;
+    availableEquipment.clear();
+    searchQuery = "";
+    seriesCtrl.clear();
+    repsCtrl.clear();
+    weightCtrl.text = "1";
+    valueType = "reps";
+    perSide = false;
+  }
 
   void _snack(String msg) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Widget _topHeader() {
-  return Row(
-    children: [
-      // ⬅️ VOLVER
-      IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => Navigator.pop(context),
-      ),
-
-      const Spacer(), // 👈 empuja el resto hacia la derecha
-
-      // 💾 GUARDAR BLOQUE
-      IconButton(
-        icon: const Icon(Icons.save),
-        tooltip: "Guardar bloque",
-        onPressed: _saveBlock,
-      ),
-    ],
-  );
-}
-
-void _openAddExerciseSheet() {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    builder: (_) {
-      return Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
+    return Row(
+      children: [
+        // ⬅️ VOLVER
+        IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
         ),
-        child: SizedBox(
-          height: MediaQuery.of(context).size.height * 0.9,
-          child: _buildExerciseForm(),
+
+        const Spacer(), // 👈 empuja el resto hacia la derecha
+        // 💾 GUARDAR BLOQUE
+        IconButton(
+          icon: const Icon(Icons.save),
+          tooltip: "Guardar bloque",
+          onPressed: _saveBlock,
         ),
-      );
-    },
-  );
-}
+      ],
+    );
+  }
 
-Widget _buildExerciseForm() {
-  return ListView(
-    padding: const EdgeInsets.all(16),
-    children: [
-      Text(
-        editingExerciseIndex != null ? "Editar ejercicio" : "Agregar ejercicio",
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 16),
+  void _openAddExerciseSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.9,
+            child: _buildExerciseForm(),
+          ),
+        );
+      },
+    );
+  }
 
-      _exerciseSearchAndSelector(),
-      const SizedBox(height: 16),
+  Widget _buildExerciseForm() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(
+          editingExerciseIndex != null
+              ? "Editar ejercicio"
+              : "Agregar ejercicio",
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
 
-      _executionInput(),
-      const SizedBox(height: 16),
+        if (exerciseName != null)
+          Container(
+            padding: const EdgeInsets.all(8),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.green),
+                const SizedBox(width: 8),
+                Expanded(child: Text("Seleccionado: $exerciseName")),
+              ],
+            ),
+          ),
 
-      ElevatedButton(
-        onPressed: () {
-          _addExercise();
-          Navigator.pop(context);
-        },
-        child: Text(editingExerciseIndex != null ? "Guardar cambios" : "Agregar"),
-      ),
-    ],
-  );
-}
+        _exerciseSearchAndSelector(),
+        const SizedBox(height: 16),
 
+        _executionInput(),
+        const SizedBox(height: 16),
+
+        ElevatedButton(
+          onPressed: () {
+            _addExercise();
+            Navigator.pop(context);
+          },
+          child: Text(
+            editingExerciseIndex != null ? "Guardar cambios" : "Agregar",
+          ),
+        ),
+      ],
+    );
+  }
 
   // =====================================================
   // BUILD
@@ -334,88 +390,86 @@ Widget _buildExerciseForm() {
   Widget build(BuildContext context) {
     return Scaffold(
       floatingActionButton: FloatingActionButton(
-  child: const Icon(Icons.add),
-  onPressed: () {
-    setState(() {
-      editingExerciseIndex = null;
-      _clearExerciseForm();
-    });
-    _openAddExerciseSheet();
-  },
-),
-
-
+        child: const Icon(Icons.add),
+        onPressed: () {
+          setState(() {
+            editingExerciseIndex = null;
+            _clearExerciseForm();
+          });
+          _openAddExerciseSheet();
+        },
+      ),
 
       body: ListView(
         padding: const EdgeInsets.all(12),
-        
+
         children: [
-            const SizedBox(height: 25),
+          const SizedBox(height: 25),
 
-  _topHeader(),
-  _blockConfigCard(),
+          _topHeader(),
+          _blockConfigCard(),
 
-
-if (editingExerciseIndex != null)
-  TextButton(
-    onPressed: () {
-      setState(() {
-        editingExerciseIndex = null;
-        _clearExerciseForm();
-      });
-    },
-    child: const Text("Cancelar edición"),
-  ),
+          if (editingExerciseIndex != null)
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  editingExerciseIndex = null;
+                  _clearExerciseForm();
+                });
+              },
+              child: const Text("Cancelar edición"),
+            ),
           const SizedBox(height: 16),
 
           ReorderableListView.builder(
-  shrinkWrap: true,
-  physics: const NeverScrollableScrollPhysics(),
-  itemCount: currentExercises.length,
-  onReorder: _reorderExercises,
-  itemBuilder: (_, index) {
-    final e = currentExercises[index];
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: currentExercises.length,
+            onReorder: _reorderExercises,
+            itemBuilder: (_, index) {
+              final e = currentExercises[index];
 
-    return Card(
-      key: ValueKey(e.hashCode),
-      child: ListTile(
-        leading: ReorderableDragStartListener(
-          index: index,
-          child: const Icon(Icons.drag_handle),
-        ),
-        title: Text(e["name"]),
-        subtitle: Text(
-          blockType == "Tabata"
-              ? "Trabajo ${workCtrl.text}s"
+              return Card(
+                key: ValueKey(e.hashCode),
+                child: ListTile(
+                  leading: ReorderableDragStartListener(
+                    index: index,
+                    child: const Icon(Icons.drag_handle),
+                  ),
+                  title: Text(e["name"]),
+                  subtitle: Text(
+  blockType == "Tabata"
+      ? "Trabajo ${workCtrl.text}s"
+      : blockType == "Series descendentes"
+          ? "Esquema ${schemaCtrl.text}"
+          : blockType == "Buscar RM"
+              ? "Buscar ${rmCtrl.text} RM"
               : "${e["series"] != null ? "${e["series"]}×" : ""}"
-                "${e["value"]} "
-                "${e["valueType"] == "time" ? "seg" : "reps"}",
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () {
-  _editExercise(index);
-  _openAddExerciseSheet();
-},
-
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete),
-              onPressed: () => setState(() {
-                currentExercises.removeAt(index);
-              }),
-            ),
-          ],
-        ),
-      ),
-    );
-  },
+            "${e["value"] ?? ""} "
+            "${e["valueType"] == "time" ? "seg" : "reps"}",
 ),
-
-        
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () {
+                          _editExercise(index);
+                          _openAddExerciseSheet();
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: () => setState(() {
+                          currentExercises.removeAt(index);
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
@@ -425,264 +479,292 @@ if (editingExerciseIndex != null)
   // UI HELPERS
   // =====================================================
 
-  Widget _exerciseSearchAndSelector() {
-    return Column(
-      children: [
-        const SizedBox(height: 8),
-        StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection("exercises")
-              .snapshots(),
-          builder: (_, snap) {
-            if (!snap.hasData) {
-              return const CircularProgressIndicator();
-            }
-
-            final docs = snap.data!.docs
-              ..sort((a, b) =>
-                  (a["name"] as String).compareTo(b["name"] as String));
-
-            final filtered = docs.where((d) {
-              final name =
-                  (d["name"] as String).toLowerCase();
-              return name.contains(searchQuery);
-            }).toList();
-
-            final Map<String, List<QueryDocumentSnapshot>> grouped = {};
-            for (final d in filtered) {
-              final data = d.data() as Map<String, dynamic>;
-              final type = data["exerciseType"] ?? "Otros";
-              grouped.putIfAbsent(type, () => []).add(d);
-            }
-
-            final types = grouped.keys.toList();
-
-            return DefaultTabController(
-              length: types.length,
-              child: Column(
-                children: [
-                  TabBar(
-                    isScrollable: true,
-                    tabs: types.map((t) => Tab(text: t)).toList(),
-                  ),
-                  SizedBox(
-                    height: 200,
-                    child: TabBarView(
-                      children: types.map((type) {
-                        return ListView(
-                          children: grouped[type]!.map((d) {
-                            final data =
-                                d.data() as Map<String, dynamic>;
-                            return InkWell(
-  borderRadius: BorderRadius.circular(8),
-  onTap: () {
-    setState(() {
-      exerciseName = data["name"];
-
-      valueType = "reps";
-      perSide = data["perSide"] == true; // ✅ FIX REAL
-      weightCtrl.text = "1";
-      repsCtrl.clear();
-
-      availableEquipment =
-          List<String>.from(data["equipment"] ?? []);
-      selectedEquipment =
-          availableEquipment.isNotEmpty
-              ? availableEquipment.first
-              : null;
-    });
-  },
-  child: Padding(
-    padding: const EdgeInsets.symmetric(
-      vertical: 6,
-      horizontal: 8,
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.arrow_right, size: 18),
-        const SizedBox(width: 6),
-        Expanded(child: Text(data["name"])),
-      ],
-    ),
-  ),
-);
-
-                          }).toList(),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ],
+Widget _exerciseSearchAndSelector() {
+  if (!_loadedExercises) {
+    return const Padding(
+      padding: EdgeInsets.all(16),
+      child: CircularProgressIndicator(),
     );
   }
 
+  final query = searchQuery.trim().toLowerCase();
+
+  final filtered = _allExercises.where((d) {
+    final name =
+        (d["name"] as String).toLowerCase().trim();
+
+    if (query.isEmpty) return true;
+
+    return name.contains(query);
+  }).toList();
+
+  return Column(
+    children: [
+      const SizedBox(height: 8),
+
+      TextField(
+        decoration: const InputDecoration(
+          hintText: "Buscar ejercicio...",
+          prefixIcon: Icon(Icons.search),
+        ),
+        onChanged: (v) {
+          setState(() {
+            searchQuery = v;
+          });
+        },
+      ),
+
+      const SizedBox(height: 12),
+
+      if (filtered.isEmpty)
+        const Padding(
+          padding: EdgeInsets.all(16),
+          child: Text("Sin resultados"),
+        )
+      else
+        SizedBox(
+          height: 250,
+          child: ListView.builder(
+            itemCount: filtered.length,
+            itemBuilder: (_, i) {
+              final data =
+                  filtered[i].data() as Map<String, dynamic>;
+
+              final isSelected =
+                  exerciseName == data["name"];
+
+              return Container(
+                color: isSelected
+                    ? Colors.blue.withOpacity(0.1)
+                    : null,
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      exerciseName = data["name"];
+                      valueType = "reps";
+                      perSide =
+                          data["perSide"] == true;
+                      weightCtrl.text = "1";
+                      repsCtrl.clear();
+
+                      availableEquipment =
+                          List<String>.from(
+                        data["equipment"] ?? [],
+                      );
+
+                      selectedEquipment =
+                          availableEquipment
+                                  .isNotEmpty
+                              ? availableEquipment
+                                  .first
+                              : null;
+                    });
+                  },
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(
+                      vertical: 4,
+                      horizontal: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.fitness_center,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            data["name"],
+                            style:
+                                const TextStyle(
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+    ],
+  );
+}
+
   Widget _executionInput() {
-  return Card(
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Ejecución",
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                // SERIES (solo si aplica)
+                if (blockType == "Series") ...[
+                  Expanded(
+                    child: TextField(
+                      controller: seriesCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: "Series"),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+
+                // REPS / TIEMPO
+                if (blockType != "Series descendentes" && blockType != "Buscar RM")
+                  Expanded(
+                    child: TextField(
+                      controller: repsCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: valueType == "reps"
+                            ? "Reps"
+                            : "Tiempo (seg)",
+                      ),
+                    ),
+                  ),
+
+                const SizedBox(width: 10),
+
+                // PESO
+                Expanded(
+                  child: TextField(
+                    controller: weightCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d+([.,]\d{0,2})?$'),
+                      ),
+                    ],
+                    decoration: const InputDecoration(labelText: "Peso (kg)"),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Toggle debajo (compacto)
+            ToggleButtons(
+              isSelected: [valueType == "reps", valueType == "time"],
+              onPressed: (i) {
+                setState(() {
+                  valueType = i == 0 ? "reps" : "time";
+                  if (valueType == "time") perSide = false;
+                });
+              },
+              children: const [
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Text("Reps"),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Text("Tiempo"),
+                ),
+              ],
+            ),
+
+            if (valueType == "reps") ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Checkbox(
+                    value: perSide,
+                    onChanged: (v) => setState(() => perSide = v ?? false),
+                  ),
+                  const Text("Por lado"),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _blockConfigCard() => Card(
     child: Padding(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "Ejecución",
-            style: TextStyle(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-
-          Row(
-            children: [
-              // SERIES (solo si aplica)
-              if (blockType == "Series") ...[
-                Expanded(
-                  child: TextField(
-                    controller: seriesCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: "Series",
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-              ],
-
-              // REPS / TIEMPO
-              Expanded(
-                child: TextField(
-                  controller: repsCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: valueType == "reps"
-                        ? "Reps"
-                        : "Tiempo (seg)",
-                  ),
-                ),
-              ),
-
-              const SizedBox(width: 10),
-
-              // PESO
-              Expanded(
-                child: TextField(
-                  controller: weightCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(
-                      RegExp(r'^\d+([.,]\d{0,2})?$'),
-                    ),
-                  ],
-                  decoration: const InputDecoration(
-                    labelText: "Peso (kg)",
-                  ),
-                ),
-              ),
-            ],
+          // 🔥 NOMBRE DEL BLOQUE
+          TextField(
+            controller: titleController,
+            decoration: const InputDecoration(labelText: "Nombre del bloque"),
           ),
 
           const SizedBox(height: 12),
 
-          // Toggle debajo (compacto)
-          ToggleButtons(
-            isSelected: [
-              valueType == "reps",
-              valueType == "time",
-            ],
-            onPressed: (i) {
-              setState(() {
-                valueType = i == 0 ? "reps" : "time";
-                if (valueType == "time") perSide = false;
-              });
-            },
-            children: const [
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Text("Reps"),
-              ),
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Text("Tiempo"),
-              ),
-            ],
-          ),
-
-          if (valueType == "reps") ...[
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Checkbox(
-                  value: perSide,
-                  onChanged: (v) =>
-                      setState(() => perSide = v ?? false),
-                ),
-                const Text("Por lado"),
-              ],
+          // 📝 DESCRIPCIÓN DEL BLOQUE
+          TextField(
+            controller: descriptionCtrl,
+            decoration: const InputDecoration(
+              labelText: "Descripción / Indicaciones",
             ),
+            maxLines: 3,
+          ),
+
+          const SizedBox(height: 12),
+
+          const SizedBox(height: 12),
+          if (blockType == "Series descendentes") _schemaInput(),
+          if (blockType == "Buscar RM") _num(rmCtrl, "RM a buscar (por defecto: 5)"),
+
+          if (blockType == "Tabata") ...[
+            _num(workCtrl, "Trabajo (seg)"),
+            _num(restCtrl, "Descanso (seg)"),
+            _num(roundsCtrl, "Rondas"),
+          ],
+          if (blockType == "Circuito") _num(roundsCtrl, "Rondas"),
+          if (blockType == "EMOM") ...[
+            _num(emomTimeCtrl, "Tiempo por ronda (seg)"),
+            _num(roundsCtrl, "Rondas"),
           ],
         ],
       ),
     ),
   );
-}
 
+  Widget _schemaInput() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        controller: schemaCtrl,
+        decoration: const InputDecoration(labelText: "Esquema (ej: 21-15-9)"),
+        keyboardType: TextInputType.text,
+      ),
+    );
+  }
 
-  Widget _blockConfigCard() => Card(
-  child: Padding(
-    padding: const EdgeInsets.all(12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-
-        // 🔥 NOMBRE DEL BLOQUE
-        // 🔥 NOMBRE DEL BLOQUE
-TextField(
-  controller: titleController,
-  decoration: const InputDecoration(
-    labelText: "Nombre del bloque",
-  ),
-),
-
-const SizedBox(height: 12),
-
-// 📝 DESCRIPCIÓN DEL BLOQUE
-TextField(
-  controller: descriptionCtrl,
-  decoration: const InputDecoration(
-    labelText: "Descripción / Indicaciones",
-  ),
-  maxLines: 3,
-),
-
-const SizedBox(height: 12),
-
-        const SizedBox(height: 12),
-
-        if (blockType == "Tabata") ...[
-          _num(workCtrl, "Trabajo (seg)"),
-          _num(restCtrl, "Descanso (seg)"),
-          _num(roundsCtrl, "Rondas"),
-        ],
-        if (blockType == "Circuito")
-          _num(roundsCtrl, "Rondas"),
-        if (blockType == "EMOM") ...[
-          _num(emomTimeCtrl, "Tiempo por ronda (seg)"),
-          _num(roundsCtrl, "Rondas"),
-        ],
-      ],
-    ),
-  ),
-);
-
+  List<int> _parseSchema(String raw) {
+    return raw
+        .split('-')
+        .map((e) => int.tryParse(e.trim()) ?? 0)
+        .where((e) => e > 0)
+        .toList();
+  }
 
   Widget _num(TextEditingController c, String label) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: TextField(
-          controller: c,
-          decoration: InputDecoration(labelText: label),
-          keyboardType: TextInputType.number,
-        ),
-      );
+    padding: const EdgeInsets.only(bottom: 8),
+    child: TextField(
+      controller: c,
+      decoration: InputDecoration(labelText: label),
+      keyboardType: TextInputType.number,
+    ),
+  );
 }

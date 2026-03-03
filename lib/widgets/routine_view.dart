@@ -165,6 +165,12 @@ class RoutineExerciseRow extends StatelessWidget {
               : "${exercise['value']} reps";
     }
 
+    // 🔥 SERIES DESCENDENTES (Muestra el arreglo de repeticiones de ser posible)
+    else if (exercise['reps'] is List) {
+      final repsList = exercise['reps'] as List;
+      mainValue = "${repsList.join('-')} reps";
+    }
+
     final String sideLabel =
         perSide ? " · por lado" : "";
 
@@ -227,6 +233,13 @@ String _blockSubtitle(Map<String, dynamic> block) {
     case "Tabata":
       return "Tabata ${block['work']}/${block['rest']} · ${block['rounds']} rondas";
 
+    case "Series descendentes":
+      return "Ladder Descendente";
+
+    case "Buscar RM":
+      final rm = block['rm'] ?? 5;
+      return "Objetivo: ${rm}RM";
+
     default:
       return block['type'] ?? '';
   }
@@ -242,6 +255,10 @@ IconData _blockIcon(String type) {
       return Icons.timer;
     case "Tabata":
       return Icons.flash_on;
+    case "Series descendentes":
+      return Icons.trending_down;
+    case "Buscar RM":
+      return Icons.track_changes;
     default:
       return Icons.category;
   }

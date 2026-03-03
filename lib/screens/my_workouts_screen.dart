@@ -378,7 +378,7 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
     // 🕒 DURACIÓN
     if (duration > 0)
       Text(
-        "${duration} min",
+        "$duration min",
         style: const TextStyle(
           fontSize: 12,
           color: Colors.grey,
@@ -538,7 +538,15 @@ TextButton.icon(
           ],
         ),
       ),
-      body: StreamBuilder<QuerySnapshot>(
+      body: Container(
+        decoration: const BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/images/training_action_2.png'),
+            fit: BoxFit.cover,
+            opacity: 0.15,
+          ),
+        ),
+        child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('workouts_logged')
             .where('userId', isEqualTo: uid)
@@ -626,6 +634,6 @@ TextButton.icon(
           );
         },
       ),
-    );
+    ), );
   }
 }

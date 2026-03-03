@@ -466,12 +466,12 @@ Widget _fatigueRow(String label, double value) {
   stops: [0.0, 0.04, 0.28, 0.52, 0.76, 0.95, 1.0],
   colors: [
     Colors.transparent,          // 0–4
-    const Color(0xFF4FC3F7),     // Celeste
-    const Color(0xFF1565C0),     // Azul
-    const Color(0xFF7B1FA2),     // Morado
-    const Color(0xFFFF8F00),     // Naranjo
-    const Color(0xFFB71C1C),     // Rojo intenso
-    const Color(0xFFB71C1C),     // Rojo sólido 95–100
+    Color(0xFF4FC3F7),     // Celeste
+    Color(0xFF1565C0),     // Azul
+    Color(0xFF7B1FA2),     // Morado
+    Color(0xFFFF8F00),     // Naranjo
+    Color(0xFFB71C1C),     // Rojo intenso
+    Color(0xFFB71C1C),     // Rojo sólido 95–100
   ],
 )
 
