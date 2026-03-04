@@ -46,7 +46,7 @@ class WorkoutRMService {
       // =========================
       // 🔵 SERIES
       // =========================
-      if (block['type'] == 'Series') {
+      if (block['type'] == 'Series' || block['type'] == 'Series descendentes' || block['type'] == 'Buscar RM') {
 
         final exercises =
             List<Map<String, dynamic>>.from(block['exercises'] ?? []);
@@ -153,7 +153,7 @@ class WorkoutRMService {
 
     for (final block in performed) {
 
-      if (block['type'] != 'Series') continue;
+      if (block['type'] != 'Series' && block['type'] != 'Series descendentes' && block['type'] != 'Buscar RM') continue;
 
       final exercises =
           List<Map<String, dynamic>>.from(block['exercises'] ?? []);

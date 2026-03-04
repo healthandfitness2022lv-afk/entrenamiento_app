@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 class CircuitBlockWidget extends StatelessWidget {
   final int index;
@@ -215,9 +217,15 @@ circuitoPerSide[index]!.putIfAbsent(
                   checkColor: Colors.black,
                   side: const BorderSide(color: Colors.grey),
                   onChanged: (v) {
+                    if (v == true) HapticFeedback.lightImpact();
                     circuitoDone[index]![round]![name]!.value = v!;
                   },
-                );
+                )
+                .animate(target: checked ? 1 : 0)
+                .shimmer(duration: 400.ms, color: Colors.greenAccent)
+                .scaleXY(end: 1.2, duration: 150.ms)
+                .then()
+                .scaleXY(end: 1.0, duration: 150.ms);
               },
             ),
           ],

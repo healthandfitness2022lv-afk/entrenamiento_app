@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 class SeriesBlockWidget extends StatelessWidget {
   final int index;
@@ -323,10 +325,16 @@ Row(
         child: Checkbox(
           value: seriesData[key]![i]['done'],
           onChanged: (v) {
+            if (v == true) HapticFeedback.lightImpact();
             seriesData[key]![i]['done'] = v!;
             onStateChanged();
           },
-        ),
+        )
+        .animate(target: seriesData[key]![i]['done'] ? 1 : 0)
+        .shimmer(duration: 400.ms, color: Colors.greenAccent)
+        .scaleXY(end: 1.2, duration: 150.ms)
+        .then()
+        .scaleXY(end: 1.0, duration: 150.ms),
       ),
     ],
   );

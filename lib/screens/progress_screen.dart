@@ -5,6 +5,7 @@ import 'exercise_rm_detail_screen.dart';
 import '../services/workout_metrics_service.dart';
 import '../services/workout_rm_service.dart';
 import '../services/progress_alert_service.dart';
+import 'achievements_screen.dart';
 
 class ProgressScreen extends StatefulWidget {
   const ProgressScreen({super.key});
@@ -60,7 +61,7 @@ class _ProgressScreenState extends State<ProgressScreen>
   tabs: const [
     Tab(text: "Resumen"),
     Tab(text: "Ejercicios"),
-    Tab(text: "Logros"), // NUEVO
+    Tab(text: "Récords / Marcas"),
   ],
 ),
 
@@ -87,7 +88,7 @@ class _ProgressScreenState extends State<ProgressScreen>
             children: [
   _buildSummary(docs),
   _buildExercisePRs(docs),
-  _buildAchievementsTab(docs), // NUEVO
+  _buildRecordsTab(docs),
 ],
 
           );
@@ -161,7 +162,7 @@ final rm = weight * (1 + reps / 30);
 
 DateTimeRange? _achievementRange;
 
-Widget _buildAchievementsTab(List<QueryDocumentSnapshot> docs) {
+Widget _buildRecordsTab(List<QueryDocumentSnapshot> docs) {
   final now = DateTime.now();
 
   final defaultStart = now.subtract(const Duration(days: 7));
@@ -264,7 +265,7 @@ Widget _buildAchievementsTab(List<QueryDocumentSnapshot> docs) {
 
       Expanded(
   child: sortedDates.isEmpty
-      ? const Center(child: Text("Sin logros en este rango"))
+      ? const Center(child: Text("Sin récords o marcas en este rango"))
       : ListView.builder(
           padding: const EdgeInsets.all(12),
           itemCount: sortedDates.length,
@@ -286,7 +287,7 @@ Widget _buildAchievementsTab(List<QueryDocumentSnapshot> docs) {
                       fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
-                  "${alerts.length} logro${alerts.length > 1 ? 's' : ''}",
+                  "${alerts.length} récord${alerts.length > 1 ? 's' : ''}",
                 ),
                 children: [
   _buildCompactAchievementView(alerts),
@@ -708,121 +709,327 @@ Color _colorForAlert(ProgressAlertType type) {
     double totalVolume = 0;
     double rpeSum = 0;
     int rpeCount = 0;
+    double maxSessionVolume = 0;
+    double maxWeightLifted = 0;
 
-    // 🔹 RM history (Map puro)
-    final Map<String, List<Map<String, dynamic>>> rmHistory = {};
+    // Streaks
+    int currentStreak = 0;
+    int bestStreak = 0;
 
-    // 🔹 Volumen semanal
+    // Volume by week
     final Map<DateTime, double> volumeByWeek = {};
+    // All session dates for streak calc
+    final List<DateTime> sessionDates = [];
+
+    final Map<String, List<Map<String, dynamic>>> rmHistory = {};
 
     for (final d in docs) {
       final date = (d['date'] as Timestamp).toDate();
       final performed = WorkoutMetricsService.performedFromDoc(d);
-
       final metrics = WorkoutMetricsService.computeFromPerformed(performed);
 
-      totalVolume += metrics.totalVolumeKg;
+      totalVolume += metrics.totalVolumeKg.toDouble();
+      if (metrics.totalVolumeKg.toDouble() > maxSessionVolume) maxSessionVolume = metrics.totalVolumeKg.toDouble();
 
       if (metrics.avgRpe > 0) {
         rpeSum += metrics.avgRpe;
         rpeCount++;
       }
 
-      // ---------- volumen semanal ----------
-      final weekStart = DateTime(
-        date.year,
-        date.month,
-        date.day,
-      ).subtract(Duration(days: date.weekday - 1));
+      sessionDates.add(DateTime(date.year, date.month, date.day));
 
-      volumeByWeek[weekStart] =
-          (volumeByWeek[weekStart] ?? 0.0) + metrics.totalVolumeKg;
+      // Weekly volume
+      final weekStart = DateTime(date.year, date.month, date.day)
+          .subtract(Duration(days: date.weekday - 1));
+      volumeByWeek[weekStart] = (volumeByWeek[weekStart] ?? 0.0) + metrics.totalVolumeKg.toDouble();
 
-      // ---------- RM history ----------
-      final sets = WorkoutRMService
-    .extractAllValidRMSetCandidates(performed);
-
+      // RM + max weight
+      final sets = WorkoutRMService.extractAllValidRMSetCandidates(performed);
       for (final s in sets) {
         final ex = s['exercise'];
         final weight = (s['weight'] as num).toDouble();
-final reps = (s['reps'] as num).toInt();
-
-final rm = weight * (1 + reps / 30);
-
-
-
+        final reps = (s['reps'] as num).toInt();
+        final rm = weight * (1 + reps / 30);
+        if (weight > maxWeightLifted) maxWeightLifted = weight;
         rmHistory.putIfAbsent(ex, () => []);
-        rmHistory[ex]!.add({
-  'date': date,
-  'rm': rm,
-  'weight': (s['weight'] as num?)?.toDouble(),
-  'reps': (s['reps'] as num?)?.toInt(),
-});
-
+        rmHistory[ex]!.add({'date': date, 'rm': rm, 'weight': weight, 'reps': reps});
       }
     }
 
+    // Streak calculation
+    final uniqueDays = sessionDates.toSet().toList()..sort();
+    if (uniqueDays.isNotEmpty) {
+      int streak = 1;
+      int best = 1;
+      for (int i = 1; i < uniqueDays.length; i++) {
+        final diff = uniqueDays[i].difference(uniqueDays[i - 1]).inDays;
+        if (diff == 1) {
+          streak++;
+          if (streak > best) best = streak;
+        } else {
+          streak = 1;
+        }
+      }
+      bestStreak = best;
+      final today = DateTime.now();
+      final todayDate = DateTime(today.year, today.month, today.day);
+      final yesterday = todayDate.subtract(const Duration(days: 1));
+
+      // La racha es válida si el usuario entrenó hoy O ayer.
+      // Si no entrenó en ninguno de los dos días, la racha es 0.
+      DateTime? startCheck;
+      if (uniqueDays.contains(todayDate)) {
+        startCheck = todayDate;
+      } else if (uniqueDays.contains(yesterday)) {
+        startCheck = yesterday;
+      }
+
+      int cs = 0;
+      if (startCheck != null) {
+        DateTime check = startCheck;
+        while (uniqueDays.contains(check)) {
+          cs++;
+          check = check.subtract(const Duration(days: 1));
+        }
+      }
+      currentStreak = cs;
+    }
+
+    // Best week
+    double bestWeekVol = 0;
+    DateTime? bestWeekStart;
+    for (final e in volumeByWeek.entries) {
+      if (e.value > bestWeekVol) {
+        bestWeekVol = e.value;
+        bestWeekStart = e.key;
+      }
+    }
+
+    // Last 4 weeks volumes for mini bar
+    final now = DateTime.now();
+    final List<double> last4Weeks = [];
+    for (int w = 3; w >= 0; w--) {
+      final wStart = DateTime(now.year, now.month, now.day)
+          .subtract(Duration(days: now.weekday - 1 + w * 7));
+      last4Weeks.add(volumeByWeek[wStart] ?? 0.0);
+    }
+
+    // Best RM exercise
+    String bestRMExercise = '';
+    double bestRM = 0;
+    for (final e in rmHistory.entries) {
+      final maxRM = e.value.map((m) => m['rm'] as double).reduce((a, b) => a > b ? a : b);
+      if (maxRM > bestRM) {
+        bestRM = maxRM;
+        bestRMExercise = e.key;
+      }
+    }
+
+    // Last session date
+    final lastSession = sessionDates.isNotEmpty ? sessionDates.last : null;
+    final daysSinceLast = lastSession != null
+        ? DateTime.now().difference(lastSession).inDays
+        : null;
+
     final avgRpe = rpeCount > 0 ? rpeSum / rpeCount : 0.0;
+    final avgVolPerSession = totalSessions > 0 ? totalVolume / totalSessions : 0.0;
 
-    final alerts = ProgressAlertService.analyzeHistorical(
-      rmHistory: rmHistory,
-  
-    );
+    // ---------- DESIGN TOKENS ----------
+    const Color card1 = Color(0xFF1B1B1B);
+    const Color neon = Color(0xFF39FF14);
+    const Color accent2 = Color(0xFF00E5FF);
+    const Color accent3 = Color(0xFFFF6B35);
+    const Color accent4 = Color(0xFFBB86FC);
 
-    alerts.sort((a, b) {
-      final da = a.evidence['date'] as DateTime?;
-      final db = b.evidence['date'] as DateTime?;
-
-      if (da == null && db == null) return 0;
-      if (da == null) return 1; // sin fecha → abajo
-      if (db == null) return -1; // con fecha → arriba
-
-      return db.compareTo(da); // 🔥 más reciente primero
-    });
-
-    Widget card(String label, String value) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+    Widget statCard(IconData icon, String label, String value, Color color, {String? sub}) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: card1,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.25), width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text(label, style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.55)))),
+            ]),
+            const SizedBox(height: 10),
+            Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+            if (sub != null) ...[
               const SizedBox(height: 4),
-              Text(
-                label,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
+              Text(sub, style: TextStyle(fontSize: 11, color: color.withOpacity(0.7))),
             ],
-          ),
+          ],
         ),
       );
     }
 
+    Widget sectionTitle(String t) => Padding(
+      padding: const EdgeInsets.only(top: 24, bottom: 12),
+      child: Text(t, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white54, letterSpacing: 1.2)),
+    );
+
+    final maxBar = last4Weeks.reduce((a, b) => a > b ? a : b);
+
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
-        const Text(
-          "Resumen global",
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+
+        // ── ACHIEVEMENTS GATEWAY ──────────────────────────────
+        InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AchievementsScreen())),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                colors: [const Color(0xFF1B1B1B), neon.withOpacity(0.07)],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              border: Border.all(color: neon.withOpacity(0.3), width: 1),
+            ),
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: neon.withOpacity(0.12), shape: BoxShape.circle),
+                child: const Icon(Icons.emoji_events, color: neon, size: 26),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text("Vitrina de Logros", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
+                  SizedBox(height: 3),
+                  Text("Ver medallas y niveles alcanzados", style: TextStyle(fontSize: 12, color: Colors.white54)),
+                ]),
+              ),
+              const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 14),
+            ]),
+          ),
         ),
+
+        sectionTitle("⚡ ESTADÍSTICAS GENERALES"),
+
+        Row(children: [
+          Expanded(child: statCard(Icons.fitness_center, "Entrenamientos", "$totalSessions", neon,
+              sub: daysSinceLast != null ? "Último hace ${daysSinceLast}d" : null)),
+          const SizedBox(width: 12),
+          Expanded(child: statCard(Icons.local_fire_department, "Racha actual", "${currentStreak}d", accent2,
+              sub: "Mejor racha: ${bestStreak}d")),
+        ]),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            card("Sesiones", totalSessions.toString()),
-            card("Volumen total", "${totalVolume.toStringAsFixed(0)} kg"),
-            card("RPE promedio", avgRpe > 0 ? avgRpe.toStringAsFixed(1) : "—"),
-          ],
+        Row(children: [
+          Expanded(child: statCard(Icons.scale, "Volumen total",
+              totalVolume >= 1000 ? "${(totalVolume / 1000).toStringAsFixed(1)}t" : "${totalVolume.toStringAsFixed(0)} kg",
+              accent3, sub: "~${avgVolPerSession.toStringAsFixed(0)} kg/sesión")),
+          const SizedBox(width: 12),
+          Expanded(child: statCard(Icons.emoji_events_outlined, "Mayor sesión", "${maxSessionVolume.toStringAsFixed(0)} kg", accent4)),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: statCard(Icons.psychology, "RPE promedio",
+              avgRpe > 0 ? avgRpe.toStringAsFixed(1) : "—", const Color(0xFFFFD700))),
+          const SizedBox(width: 12),
+          Expanded(child: statCard(Icons.hardware, "Mayor peso", "${maxWeightLifted.toStringAsFixed(1)} kg", const Color(0xFFFF4081))),
+        ]),
+
+        // ── MEJOR SEMANA ─────────────────────────────────────
+        sectionTitle("📅 MEJOR SEMANA"),
+        if (bestWeekStart != null)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: card1,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: accent3.withOpacity(0.25)),
+            ),
+            child: Row(children: [
+              Icon(Icons.local_fire_department, color: accent3, size: 34),
+              const SizedBox(width: 14),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(
+                  "Semana del ${bestWeekStart.day}/${bestWeekStart.month}/${bestWeekStart.year}",
+                  style: const TextStyle(fontSize: 12, color: Colors.white54),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  "${bestWeekVol.toStringAsFixed(0)} kg",
+                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+              ]),
+            ]),
+          ),
+
+        // ── ÚLTIMAS 4 SEMANAS ─────────────────────────────────
+        sectionTitle("📊 VOLUMEN – ÚLTIMAS 4 SEMANAS"),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: card1, borderRadius: BorderRadius.circular(16)),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List.generate(4, (i) {
+              final vol = last4Weeks[i];
+              final barH = maxBar > 0 ? (vol / maxBar * 80).clamp(4.0, 80.0) : 4.0;
+              final labels = ["-3s", "-2s", "-1s", "Esta"];
+              final isLast = i == 3;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    Text(
+                      vol > 0 ? "${(vol / 1000).toStringAsFixed(1)}t" : "—",
+                      style: TextStyle(fontSize: 10, color: isLast ? neon : Colors.white54),
+                    ),
+                    const SizedBox(height: 6),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 600),
+                      height: barH,
+                      decoration: BoxDecoration(
+                        color: isLast ? neon : Colors.white24,
+                        borderRadius: BorderRadius.circular(6),
+                        boxShadow: isLast ? [BoxShadow(color: neon.withOpacity(0.4), blurRadius: 8)] : [],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(labels[i], style: const TextStyle(fontSize: 10, color: Colors.white38)),
+                  ]),
+                ),
+              );
+            }),
+          ),
         ),
+
+        // ── MEJOR RM ─────────────────────────────────────────
+        if (bestRMExercise.isNotEmpty) ...[
+          sectionTitle("🏆 MAYOR RM ESTIMADO"),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: card1,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: accent4.withOpacity(0.3)),
+            ),
+            child: Row(children: [
+              Icon(Icons.fitness_center, color: accent4, size: 32),
+              const SizedBox(width: 14),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(bestRMExercise,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, color: Colors.white70)),
+                const SizedBox(height: 4),
+                Text("${bestRM.toStringAsFixed(1)} kg",
+                    style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+              ])),
+            ]),
+          ),
         ],
-    
+
+      ],
     );
   }
 

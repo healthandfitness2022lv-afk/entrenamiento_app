@@ -37,7 +37,7 @@ class WorkoutLoadService {
   for (final e in performed) {
 
     // 🔵 SERIES
-    if (e['type'] == 'Series') {
+    if (e['type'] == 'Series' || e['type'] == 'Series descendentes' || e['type'] == 'Buscar RM') {
       for (final ex in e['exercises'] ?? []) {
         if (ex['exercise'] != null) {
           names.add(ex['exercise']);
@@ -93,7 +93,7 @@ class WorkoutLoadService {
 // ======================
 // 🔵 SERIES (solo nuevo)
 // ======================
-if (e['type'] == 'Series') {
+if (e['type'] == 'Series' || e['type'] == 'Series descendentes' || e['type'] == 'Buscar RM') {
 
   for (final exEntry in e['exercises'] ?? []) {
 
@@ -239,20 +239,21 @@ if (e['type'] == 'Series') {
       final String? exerciseType = ex?['exerciseType'];
 
       final exerciseFactor = exerciseTypeFactorOf(exerciseType);
+      final equipmentFactor = equipmentFactorOf(ex?['equipment']);
       final blockFactor = structureFactor(s.sourceType);
 
       for (final e in s.muscleWeights.entries) {
         final rpeF = rpeFactor(s.rpe);
 
-acc[e.key] =
-    (acc[e.key] ?? 0) +
-    (s.sets *
-     s.rpe *
-     rpeF *
-     exerciseFactor *
-     blockFactor *
-     e.value);
-
+        acc[e.key] =
+            (acc[e.key] ?? 0) +
+            (s.sets *
+             s.rpe *
+             rpeF *
+             exerciseFactor *
+             equipmentFactor *
+             blockFactor *
+             e.value);
       }
     }
 
@@ -265,7 +266,7 @@ acc[e.key] =
   static double structureFactor(String sourceType) {
     switch (sourceType) {
       case 'Circuito':
-        return 1.2;
+        return 1.3; // Subido de 1.2
       case 'Tabata':
         return 2.5;
       default:

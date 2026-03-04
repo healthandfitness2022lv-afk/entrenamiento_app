@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 class BuscarRmBlockWidget extends StatelessWidget {
   final int index;
@@ -167,6 +169,28 @@ class BuscarRmBlockWidget extends StatelessWidget {
                               onChanged: (_) => onStateChanged(),
                             ),
                           ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 52,
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<int>(
+                                value: set['rpe'] ?? 7,
+                                isExpanded: true,
+                                iconSize: 18,
+                                items: List.generate(
+                                  10,
+                                  (r) => DropdownMenuItem(
+                                    value: r + 1,
+                                    child: Text("R${r + 1}", style: const TextStyle(fontSize: 13)),
+                                  ),
+                                ),
+                                onChanged: (v) {
+                                  set['rpe'] = v!;
+                                  onStateChanged();
+                                },
+                              ),
+                            ),
+                          ),
                           const Spacer(),
                           if (!done && i == sets.length - 1)
                              IconButton(
@@ -181,10 +205,16 @@ class BuscarRmBlockWidget extends StatelessWidget {
                           Checkbox(
                             value: done,
                             onChanged: (v) {
+                              if (v == true) HapticFeedback.lightImpact();
                               set['done'] = v ?? false;
                               onStateChanged();
                             },
-                          ),
+                          )
+                          .animate(target: done ? 1 : 0)
+                          .shimmer(duration: 400.ms, color: Colors.greenAccent)
+                          .scaleXY(end: 1.2, duration: 150.ms)
+                          .then()
+                          .scaleXY(end: 1.0, duration: 150.ms),
                         ],
                       ),
                     );

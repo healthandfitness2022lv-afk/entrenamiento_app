@@ -456,7 +456,7 @@ Future<void> _reviewWeekDetailedByDay() async {
         final label = blockLabel(i, block);
 
         // SERIES: cada ejercicio tiene 'name' y 'series' (=sets)
-        if (type == 'Series') {
+        if (type == 'Series' || type == 'Series descendentes' || type == 'Buscar RM') {
           final exs = (block['exercises'] is List) ? List.from(block['exercises']) : const [];
           for (final exRaw in exs) {
             if (exRaw is! Map) continue;
@@ -572,7 +572,7 @@ Future<void> _reviewWeekDetailedByDay() async {
         final e = Map<String, dynamic>.from(it);
         final type = (e['type'] ?? '').toString();
 
-        if (type == 'Series') {
+        if (type == 'Series' || type == 'Series descendentes' || type == 'Buscar RM') {
           final name = normalizeExerciseName(e['exercise']);
           final sets = (e['sets'] is List) ? (e['sets'] as List).length.toDouble() : 0.0;
           addDone(name, sets);

@@ -325,3 +325,49 @@ extension FunctionalGroupLabel on FunctionalGroup {
     }
   }
 }
+
+// ======================================================
+// ⏳ FACTORES DE RECUPERACIÓN POR MÚSCULO
+// ======================================================
+extension MuscleRecovery on Muscle {
+  double get recoveryFactor {
+    switch (this) {
+      // 1. Muy rápido (0.55)
+      case Muscle.calves:
+      case Muscle.forearms:
+      case Muscle.abs:
+      case Muscle.lowerAbs:
+      case Muscle.obliques:
+      case Muscle.midDelts:
+      case Muscle.rearDelts:
+      case Muscle.biceps:
+        return 0.6;
+
+      // 2. Rápido (0.65)
+      case Muscle.triceps:
+      case Muscle.frontDelts:
+      case Muscle.trapsUpper:
+      case Muscle.lowerTraps:
+      case Muscle.serratus:
+      case Muscle.psoas:
+        return 0.65;
+
+      // 3. Estándar torso (0.72)
+      case Muscle.upperChest:
+      case Muscle.lats:
+      case Muscle.midBack:
+      case Muscle.rombs:
+      case Muscle.lowerBack:
+        return 0.7;
+
+      // 4. Lento sistémico piernas/lumbares (0.80)
+      case Muscle.quads:
+      case Muscle.chest:
+      case Muscle.hamstrings:
+      case Muscle.glutes:
+      case Muscle.midGlutes:
+      case Muscle.adductors:
+        return 0.75;
+    }
+  }
+}

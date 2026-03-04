@@ -10,6 +10,7 @@ import '../services/fatigue_service.dart';
 
 
 import '../services/fatigue_recalculation_service.dart';
+import 'achievements_screen.dart';
 
 enum MuscleViewMode { muscle, anatomical, functional }
 
@@ -156,6 +157,7 @@ _rebuildHeatmapFromSteps();
     for (final m in Muscle.values) {
       // recuperar hasta workout
       fatigue[m] = FatigueService.recoverToNow(
+        muscle: m,
         fatigue: fatigue[m]!,
         lastUpdate: lastUpdate[m]!,
         now: t,
@@ -174,6 +176,7 @@ _rebuildHeatmapFromSteps();
 
   for (final m in Muscle.values) {
     fatigue[m] = FatigueService.recoverToNow(
+      muscle: m,
       fatigue: fatigue[m]!,
       lastUpdate: lastUpdate[m]!,
       now: now,
@@ -226,10 +229,9 @@ _rebuildHeatmapFromSteps();
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _summaryCard(),
-            const SizedBox(height: 24),
+            const SizedBox(height: 32),
             _bodyAndMusclesSection(),
-            _actions(),
-            const SizedBox(height: 24),
+            const SizedBox(height: 48),
           ],
         ),
       ),
@@ -255,112 +257,124 @@ _rebuildHeatmapFromSteps();
   }
 
   Widget _bodyAndMusclesSection() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 900;
+    if (heatmap.isEmpty) {
+      return _buildEmptyState();
+    }
 
-        if (isWide) {
-          // 🖥️ 3 columnas
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _bodyBlock("Frontal", false)),
-              const SizedBox(width: 16),
-              Expanded(child: _bodyBlock("Posterior", true)),
-              const SizedBox(width: 16),
-              Expanded(child: _allMusclesList()),
-            ],
-          );
-        }
-
-        // 📱 Mobile: SVG arriba, lista abajo
-        return Column(
+    return Column(
+      children: [
+        _buildViewModeTabs(),
+        const SizedBox(height: 24),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(child: _bodyBlock("Frontal", false)),
-                const SizedBox(width: 16),
-                Expanded(child: _bodyBlock("Posterior", true)),
-              ],
+            // COLUMNA IZQUIERDA (Heatmaps y Cuenta en una caja)
+            Expanded(
+              flex: 10,
+              child: Column(
+                children: [
+                  // Fila de Heatmaps
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _bodyBlock("Frontal", false)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _bodyBlock("Posterior", true)),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  // Debajo de Heatmaps pero lado izquierdo
+                  _actions(),
+                ],
+              ),
             ),
-            const SizedBox(height: 24),
-            _allMusclesList(),
+            
+            const SizedBox(width: 24),
+            
+            // COLUMNA DERECHA (Barras de músculos, más cortas)
+            Expanded(
+              flex: 11,
+              child: _allMusclesList(),
+            ),
           ],
-        );
-      },
+        ),
+      ],
     );
   }
 
-  Widget _allMusclesList() {
-  if (heatmap.isEmpty) {
-    return const Text(
-      "Sin datos de fatiga",
-      style: TextStyle(color: Colors.grey),
-    );
-  }
-
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const Text(
-        "Fatiga",
-        style: TextStyle(fontWeight: FontWeight.bold),
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.fitness_center, size: 48, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text(
+              "Aún no hay datos de fatiga.",
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.home),
+              label: const Text("Ir al inicio"),
+              onPressed: () {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              },
+            )
+          ],
+        ),
       ),
+    );
+  }
 
-      const SizedBox(height: 12),
-
-      /// 🔘 TABS
-      Row(
+  Widget _buildViewModeTabs() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           ChoiceChip(
             label: const Text("Músculo"),
             selected: fatigueViewMode == MuscleViewMode.muscle,
-            onSelected: (_) {
-              setState(() {
-                fatigueViewMode = MuscleViewMode.muscle;
-              });
-            },
+            onSelected: (_) => setState(() => fatigueViewMode = MuscleViewMode.muscle),
           ),
           const SizedBox(width: 8),
           ChoiceChip(
             label: const Text("Grupo"),
             selected: fatigueViewMode == MuscleViewMode.anatomical,
-            onSelected: (_) {
-              setState(() {
-                fatigueViewMode = MuscleViewMode.anatomical;
-              });
-            },
+            onSelected: (_) => setState(() => fatigueViewMode = MuscleViewMode.anatomical),
           ),
           const SizedBox(width: 8),
           ChoiceChip(
             label: const Text("Funcional"),
             selected: fatigueViewMode == MuscleViewMode.functional,
-            onSelected: (_) {
-              setState(() {
-                fatigueViewMode = MuscleViewMode.functional;
-              });
-            },
+            onSelected: (_) => setState(() => fatigueViewMode = MuscleViewMode.functional),
           ),
         ],
       ),
+    );
+  }
 
-      const SizedBox(height: 16),
-
+  Widget _allMusclesList() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
       if (fatigueViewMode == MuscleViewMode.muscle)
         _buildMuscleView(),
 
       if (fatigueViewMode == MuscleViewMode.anatomical)
         _buildGroupView(
-  anatomicalGroups,
-  (g) => g.label,
-),
+          anatomicalGroups,
+          (g) => g.label,
+        ),
 
       if (fatigueViewMode == MuscleViewMode.functional)
         _buildGroupView(
-  functionalGroups,
-  (g) => g.label,
-),
+          functionalGroups,
+          (g) => g.label,
+        ),
 
       const SizedBox(height: 16),
       const Divider(),
@@ -393,7 +407,7 @@ for (final entry in groups.entries) {
 
   final values = muscles
       .map((m) => heatmap[m] ?? 0)
-      .where((v) => v > 10)
+      .where((v) => v >= 4)
       .toList();
 
   if (values.isEmpty) continue;
@@ -414,32 +428,34 @@ return Column(
 }
 
 Widget _fatigueRow(String label, double value) {
+  final isLowValue = value < 4;
   return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: heatmapColor(value),
-            borderRadius: BorderRadius.circular(2),
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            Text(
+              "${value.toStringAsFixed(1)}",
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: isLowValue ? Colors.grey.shade600 : heatmapColor(value),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 13),
-          ),
-        ),
-
-        Text(
-          value.toStringAsFixed(1),
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: (value / 100).clamp(0.0, 1.0),
+            backgroundColor: Colors.grey.shade200,
+            color: isLowValue ? const Color(0xFF4FC3F7).withOpacity(0.5) : heatmapColor(value),
+            minHeight: 8,
           ),
         ),
       ],
@@ -494,53 +510,77 @@ Widget _fatigueRow(String label, double value) {
 }
 
   // ======================================================
+  // 👤 ENCABEZADO DE USUARIO
+  // ======================================================
+
+
+  // ======================================================
   // 📊 RESUMEN GENERAL
   // ======================================================
   Widget _summaryCard() {
     final avgFatigue = generalFatigueTopMuscles();
 
     final status = avgFatigue < 25
-        ? "Recuperado"
+        ? "Recuperado, listo para entrenar"
         : avgFatigue < 55
-        ? "Carga moderada"
-        : "Alta carga";
+        ? "Carga moderada, buen progreso"
+        : "Alta carga, considera descansar";
 
     final color = heatmapColor(avgFatigue);
 
     return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Row(
           children: [
-            Icon(Icons.accessibility_new, size: 40, color: color),
-            const SizedBox(width: 16),
+            SizedBox(
+              height: 80,
+              width: 80,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CircularProgressIndicator(
+                    value: avgFatigue / 100,
+                    backgroundColor: Colors.grey.shade200,
+                    color: color,
+                    strokeWidth: 8,
+                  ),
+                  Center(
+                    child: Text(
+                      "${avgFatigue.toInt()}%",
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 20),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     "Estado general",
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    "${avgFatigue.toStringAsFixed(2)}% de fatiga",
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
                   Text(
                     status,
                     style: TextStyle(
                       fontSize: 14,
-                      color: color.withOpacity(0.8),
+                      fontWeight: FontWeight.w500,
+                      color: color.withOpacity(0.9),
                     ),
                   ),
                   if (lastFatigueCalculation != null)
                     Padding(
-                      padding: const EdgeInsets.only(top: 4),
+                      padding: const EdgeInsets.only(top: 8),
                       child: Text(
                         "Último cálculo: "
                         "${lastFatigueCalculation!.day.toString().padLeft(2, '0')}/"
@@ -608,7 +648,7 @@ Widget _fatigueRow(String label, double value) {
 
     final values = muscles
         .map((m) => heatmap[m] ?? 0)
-        .where((v) => v > 10)
+        .where((v) => v >= 4)
         .toList();
 
     if (values.isEmpty) continue;
@@ -632,18 +672,62 @@ Widget _fatigueRow(String label, double value) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Acciones", style: TextStyle(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-
-        ListTile(
-          leading: const Icon(Icons.history),
-          title: const Text("Ver entrenamientos"),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const MyWorkoutsScreen()),
-            );
-          },
+        const Text("Tu cuenta", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const SizedBox(height: 12),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Column(
+            children: [
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                leading: const Icon(Icons.emoji_events_outlined, color: Colors.orange, size: 22),
+                title: const Text("Mis Logros"),
+                trailing: const Icon(Icons.chevron_right, size: 20),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AchievementsScreen())), 
+              ),
+              const Divider(height: 1),
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                leading: const Icon(Icons.history, color: Colors.blue, size: 22),
+                title: const Text("Historial"),
+                trailing: const Icon(Icons.chevron_right, size: 20),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const MyWorkoutsScreen()),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                leading: const Icon(Icons.analytics_outlined, color: Colors.purple, size: 22),
+                title: const Text("Auditoría"),
+                trailing: const Icon(Icons.chevron_right, size: 20),
+                onTap: lastAuditSteps == null ? null : () => _showAudit(lastAuditSteps!),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                leading: const Icon(Icons.logout, color: Colors.red, size: 22),
+                title: const Text("Salir", style: TextStyle(color: Colors.red)),
+                onTap: () async {
+                  await FirebaseAuth.instance.signOut();
+                  if (!mounted) return;
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                },
+              ),
+            ],
+          ),
         ),
       ],
     );

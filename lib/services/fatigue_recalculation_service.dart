@@ -161,8 +161,9 @@ class FatigueRecalculationService {
       // =========================
       // 🔹 RECUPERACIÓN
       // =========================
-      state.forEach((_, s) {
+      state.forEach((muscle, s) {
         s.fatigue = FatigueService.getCurrentFatigue(
+          muscle: muscle,
           state: s,
           now: workoutDate,
         );
@@ -263,8 +264,9 @@ if (!forceRecalculateLoad && raw != null) {
         for (final e in state.entries) e.key: e.value.fatigue,
       };
 
-      state.forEach((_, s) {
+      state.forEach((muscle, s) {
         s.fatigue = FatigueService.getCurrentFatigue(
+          muscle: muscle,
           state: s,
           now: now,
         );

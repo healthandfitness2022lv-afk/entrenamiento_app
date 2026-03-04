@@ -8,9 +8,9 @@ import '../services/workout_volume_service.dart';
 import '../models/routine_session_summary.dart';
 import 'log_workout_screen.dart';
 
-
-
-
+import '../models/achievement.dart';
+import '../services/progress_alert_service.dart';
+import '../services/workout_rm_service.dart';
 
 class MyWorkoutsScreen extends StatefulWidget {
   const MyWorkoutsScreen({super.key});
@@ -67,39 +67,155 @@ double _parseDouble(dynamic v) {
     return DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
   }
 
-  
+  Widget _buildAchievementBadge(String text, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.4), width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(text, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)),
+        ],
+      ),
+    );
+  }
 
 Widget _performedWorkoutView(List<Map<String, dynamic>> performed) {
-  final List<Map<String, dynamic>> seriesExercises = [];
+  final List<Widget> children = [];
 
-  for (final p in performed.where((p) => p['type'] == 'Series')) {
-    final List exs = p['exercises'] ?? [];
+  for (final p in performed) {
+    String type = p['type'] ?? 'Series';
+    String blockTitle = (p['blockTitle']?.toString() ?? '').trim();
 
-    for (final ex in exs) {
-      seriesExercises.add({
-        ...ex,
-        'blockIndex': p['blockIndex'],
-      });
+    // Fix if backend saved a default generic name or it is empty
+    if (blockTitle.isEmpty || blockTitle == 'Series' || blockTitle == 'Circuito' || blockTitle == 'Tabata') {
+      blockTitle = type;
+    }
+
+    if (type == 'Circuito') {
+      final rounds = p['rounds'] as List? ?? [];
+      blockTitle = "$blockTitle · ${rounds.length} rondas";
+    } else if (type == 'Tabata') {
+      blockTitle = "$blockTitle · ${p['work']}/${p['rest']} · ${p['rounds']} rondas";
+    }
+
+    children.add(
+      Padding(
+        padding: EdgeInsets.only(bottom: 6, top: children.isEmpty ? 0 : 8),
+        child: Text(
+          blockTitle.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.blueAccent,
+          ),
+        ),
+      ),
+    );
+
+    if (type == 'Circuito') {
+      children.add(_circuitBlockView(p));
+    } else if (type == 'Tabata') {
+      children.add(_tabataBlockView(p));
+    } else if (type == 'Series descendentes') {
+      children.add(_descendingSeriesBlockView(p));
+    } else if (type == 'Series' || type == 'Buscar RM') {
+      final List exs = p['exercises'] ?? [];
+      for (final ex in exs) {
+        children.add(_seriesExerciseRow(Map<String, dynamic>.from(ex), type));
+      }
     }
   }
 
-  final circuitos =
-      performed.where((p) => p['type'] == 'Circuito').toList();
-
-  final tabatas =
-      performed.where((p) => p['type'] == 'Tabata').toList();
-
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      ...seriesExercises.map(_seriesExerciseRow),
-      ...circuitos.map(_circuitBlockView),
-      ...tabatas.map(_tabataBlockView),
-    ],
+    children: children,
   );
 }
 
-Widget _seriesExerciseRow(Map<String, dynamic> p) {
+Widget _descendingSeriesBlockView(Map<String, dynamic> p) {
+  final List exs = p['exercises'] ?? [];
+  if (exs.isEmpty) return const SizedBox();
+
+  int maxSets = 0;
+  for (final ex in exs) {
+    if (ex is! Map) continue;
+    final sets = ex['sets'] as List? ?? [];
+    if (sets.length > maxSets) {
+      maxSets = sets.length;
+    }
+  }
+
+  if (maxSets == 0) return const SizedBox();
+
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 4),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ...List.generate(maxSets, (i) {
+          int? roundReps;
+          for (final ex in exs) {
+            if (ex is! Map) continue;
+            final sets = ex['sets'] as List? ?? [];
+            if (i < sets.length) {
+              roundReps = _parseInt(sets[i]['reps']);
+              if (roundReps > 0) break;
+            }
+          }
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "${roundReps ?? '-'} reps",
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                ...exs.map((ex) {
+                  if (ex is! Map) return const SizedBox();
+                  final String name = ex['exercise'] ?? 'Ejercicio';
+                  final sets = ex['sets'] as List? ?? [];
+                  if (i >= sets.length) return const SizedBox();
+
+                  final s = sets[i];
+                  final weight = s['weight'] ?? 0;
+                  final rpe = s['rpe'] ?? '-';
+                  
+                  final bool exPerSide = ex['perSide'] == true;
+                  final bool sPerSide = s['perSide'] == true;
+                  final bool perSide = exPerSide || sPerSide;
+                  final sideLabel = perSide ? " · por lado" : "";
+
+                  return Text(
+                    "• $name$sideLabel · $weight kg · RPE $rpe",
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                    ),
+                  );
+                }),
+              ],
+            ),
+          );
+        }),
+      ],
+    ),
+  );
+}
+
+Widget _seriesExerciseRow(Map<String, dynamic> p, String blockType) {
   final String name = p['exercise'];
   final List sets = p['sets'] ?? [];
 
@@ -108,20 +224,25 @@ Widget _seriesExerciseRow(Map<String, dynamic> p) {
   final bool perSide =
     (p['perSide'] == true) || sets.any((s) => s['perSide'] == true);
 
-
   final int sideMultiplier = perSide ? 2 : 1;
 
   double totalWeight = 0;
 
   for (final s in sets) {
     final int reps = _parseInt(s['reps']);
-final double weight = _parseDouble(s['weight']);
-
+    final double weight = _parseDouble(s['weight']);
 
     totalWeight += reps * weight * sideMultiplier;
   }
 
   final String sideLabel = perSide ? " · por lado ×2" : "";
+  
+  String headerText = "$name$sideLabel · ${totalWeight.toStringAsFixed(0)} kg";
+  if (blockType == 'Series descendentes') {
+      headerText = "$name (Descendentes)$sideLabel · ${totalWeight.toStringAsFixed(0)} kg";
+  } else if (blockType == 'Buscar RM') {
+      headerText = "$name (RM)$sideLabel · ${totalWeight.toStringAsFixed(0)} kg";
+  }
 
   return Padding(
     padding: const EdgeInsets.only(bottom: 6),
@@ -129,7 +250,7 @@ final double weight = _parseDouble(s['weight']);
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "$name$sideLabel · ${totalWeight.toStringAsFixed(0)} kg",
+          headerText,
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -138,6 +259,17 @@ final double weight = _parseDouble(s['weight']);
         const SizedBox(height: 2),
         ...List.generate(sets.length, (i) {
           final s = sets[i];
+          if (blockType == 'Series descendentes') {
+            return Text(
+              "• Escalón ${i + 1}: ${s['reps']} reps · ${s['weight'] ?? 0} kg · RPE ${s['rpe']}",
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            );
+          } else if (blockType == 'Buscar RM') {
+            return Text(
+              "• Intento ${i + 1}: ${s['reps']} reps · ${s['weight'] ?? 0} kg · RPE ${s['rpe']}",
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            );
+          }
           return Text(
             "• ${i + 1}: ${s['reps']} reps · ${s['weight'] ?? 0} kg · RPE ${s['rpe']}",
             style: const TextStyle(
@@ -161,12 +293,6 @@ Widget _circuitBlockView(Map<String, dynamic> p) {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          "Circuito · ${rounds.length} rondas",
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 6),
-
         ...rounds.map((r) {
   final List exs = r['exercises'] ?? [];
 
@@ -229,12 +355,6 @@ Widget _tabataBlockView(Map<String, dynamic> p) {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          "Tabata · ${p['work']}/${p['rest']} · ${p['rounds']} rondas",
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 6),
-
         ...exs.map((e) => Text(
               "• ${e['exercise']} · RPE ${e['rpe']}",
               style: const TextStyle(fontSize: 12, color: Colors.grey),
@@ -301,10 +421,12 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
   // 🔹 Listado reutilizable según rango
   // ======================================================
   Widget _buildList({
+    required List<QueryDocumentSnapshot> allDocs,
     required List<QueryDocumentSnapshot> docs,
     required DateFormat dateFmt,
     required DateTime start,
     required DateTime end,
+    required List<Map<String, dynamic>> userAchievements,
   }) {
     // Filtrar por rango (inclusive)
     final filtered = docs.where((d) {
@@ -332,6 +454,8 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
     final data = d.data() as Map<String, dynamic>;
 
     final date = (data['date'] as Timestamp).toDate();
+    final finishedTs = data['finishedAt'] as Timestamp? ?? data['date'] as Timestamp;
+    final finishedDt = finishedTs.toDate();
 
     final performed = List<Map<String, dynamic>>.from(
       data['performed'] ?? [],
@@ -347,25 +471,112 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
     final int duration =
     (data['durationMinutes'] as num?)?.toInt() ?? 0;
 
+    // 🔥 LOGROS VITRINA
+    final List<Achievement> sessionVitrina = [];
+    for (var u in userAchievements) {
+      if (u['unlockedAt'] == null) continue;
+      final DateTime unlocked = (u['unlockedAt'] as Timestamp).toDate();
+      if (unlocked.difference(finishedDt).inMinutes.abs() <= 5) {
+        try {
+          sessionVitrina.add(achievementsCatalog.firstWhere((a) => a.id == u['id']));
+        } catch (_) {}
+      }
+    }
+
+    // 🔥 LOGROS OTROS (PRs)
+    final rmHistory = <String, List<Map<String, dynamic>>>{};
+    for (final ad in allDocs) {
+      final adDate = (ad['date'] as Timestamp).toDate();
+      if (adDate.isAfter(date)) continue;
+      final perf = List<Map<String,dynamic>>.from((ad.data() as Map)['performed'] ?? []);
+      final sets = WorkoutRMService.extractAllValidRMSetCandidates(perf);
+      for (final s in sets) {
+        final weight = (s['weight'] as num).toDouble();
+        final reps = (s['reps'] as num).toInt();
+        rmHistory.putIfAbsent(s['exercise'], () => []).add({
+          'date': adDate, 'rm': weight * (1 + reps / 30), 'weight': weight, 'reps': reps
+        });
+      }
+    }
+
+    final alerts = ProgressAlertService.analyzeSessionImpact(
+      rmHistory: rmHistory,
+      targetDate: date,
+    );
+
+    final List<Widget> badgeWidgets = [];
+    for (final ach in sessionVitrina) {
+      badgeWidgets.add(_buildAchievementBadge(ach.title, ach.icon, Colors.amber));
+    }
+    
+    final Map<ProgressAlertType, int> alertCounts = {};
+    for (final a in alerts) {
+      if (a.type != ProgressAlertType.rpeWithoutProgress && a.type != ProgressAlertType.stagnation) {
+         alertCounts[a.type] = (alertCounts[a.type] ?? 0) + 1;
+      }
+    }
+    
+    alertCounts.forEach((type, count) {
+      String title = ""; IconData id; Color c;
+      switch (type) {
+        case ProgressAlertType.newPR: title = "Nuevo PR"; id = Icons.emoji_events; c = Colors.amber; break;
+        case ProgressAlertType.heaviestSet: title = "Serie Pesada"; id = Icons.fitness_center; c = Colors.deepPurpleAccent; break;
+        case ProgressAlertType.sessionVolumePR: title = "Récord Volumen"; id = Icons.bar_chart; c = Colors.blueAccent; break;
+        case ProgressAlertType.bestWeekEver: title = "Mejor Sem."; id = Icons.calendar_today; c = Colors.green; break;
+        case ProgressAlertType.improvedEfficiency: title = "Más Eficacia"; id = Icons.psychology; c = Colors.teal; break;
+        default: title = "Logro"; id = Icons.star; c = Colors.orange; break;
+      }
+      if (count > 1) title = "$count $title";
+      badgeWidgets.add(_buildAchievementBadge(title, id, c));
+    });
+
 
     return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      elevation: 4,
+      shadowColor: badgeWidgets.isNotEmpty ? Colors.amber.withOpacity(0.2) : Colors.black26,
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: badgeWidgets.isNotEmpty ? Colors.amber.withOpacity(0.4) : Colors.grey.withOpacity(0.1),
+          width: 1,
+        )
       ),
       child: ExpansionTile(
-        leading: const Icon(
-          Icons.fitness_center,
-          color: Colors.blueAccent,
+        shape: const Border(),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.blueAccent.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.fitness_center,
+            color: Colors.blueAccent,
+            size: 24,
+          ),
         ),
         title: Text(
           data['routineName'] ?? 'Entrenamiento',
-          style: const TextStyle(fontWeight: FontWeight.w600),
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
         ),
-        subtitle: Text(
-          dateFmt.format(date),
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              dateFmt.format(date),
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            if (badgeWidgets.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: badgeWidgets,
+              ),
+            ]
+          ],
         ),
         trailing: Row(
   mainAxisSize: MainAxisSize.min,
@@ -547,6 +758,17 @@ TextButton.icon(
           ),
         ),
         child: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('users').doc(uid).collection('achievements').snapshots(),
+          builder: (context, achSnapshot) {
+            
+            final userAchievements = achSnapshot.hasData
+                ? achSnapshot.data!.docs.map((d) => {
+                    'id': d.id,
+                    'unlockedAt': (d.data() as Map<String, dynamic>)['unlockedAt'],
+                  }).toList()
+                : <Map<String, dynamic>>[];
+
+            return StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('workouts_logged')
             .where('userId', isEqualTo: uid)
@@ -573,18 +795,22 @@ TextButton.icon(
             children: [
               // ✅ Esta semana (default)
               _buildList(
+                allDocs: docs,
                 docs: docs,
                 dateFmt: dateFmt,
                 start: weekStart,
                 end: weekEnd,
+                userAchievements: userAchievements,
               ),
 
               // ✅ Últimos 10 días
               _buildList(
+                allDocs: docs,
                 docs: docs,
                 dateFmt: dateFmt,
                 start: last10Start,
                 end: last10End,
+                userAchievements: userAchievements,
               ),
 
               // ✅ Rango
@@ -622,18 +848,23 @@ TextButton.icon(
                   const SizedBox(height: 6),
                   Expanded(
                     child: _buildList(
+                      allDocs: docs,
                       docs: docs,
                       dateFmt: dateFmt,
                       start: rangeStart,
                       end: rangeEnd,
-                    ),
+                      userAchievements: userAchievements,
+                    ),      
                   ),
                 ],
               ),
             ],
           );
         },
-      ),
-    ), );
+      );
+      },
+    ),
+    ),
+    );
   }
 }

@@ -48,7 +48,7 @@ class MyApp extends StatelessWidget {
       locale: const Locale('es', 'ES'),
 
       // =============================
-      // 🎨 TEMA DARK ENERGIZER
+      // 🎨 TEMA DARK ENERGIZER (Restaurado)
       // =============================
       theme: ThemeData(
         useMaterial3: true,
@@ -68,23 +68,19 @@ class MyApp extends StatelessWidget {
         textTheme: const TextTheme(
           headlineLarge: TextStyle(
             fontSize: 26,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
             color: Color(0xFFF5F5F5),
+            letterSpacing: -0.5,
           ),
           titleLarge: TextStyle(
             fontSize: 18,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
             color: Color(0xFFD0FFD0),
           ),
           titleMedium: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
             color: Color(0xFFCFCFCF),
-          ),
-          titleSmall: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFFB8B8B8),
           ),
           bodyLarge: TextStyle(
             fontSize: 16,
@@ -100,10 +96,10 @@ class MyApp extends StatelessWidget {
 
         cardTheme: CardThemeData(
           color: const Color(0xFF1B1B1B),
-          elevation: 6,
-          shadowColor: Colors.black54,
+          elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
+            side: const BorderSide(color: Color(0xFF2A2A2A), width: 1),
           ),
         ),
 
@@ -123,19 +119,6 @@ class MyApp extends StatelessWidget {
           ),
         ),
 
-        outlinedButtonTheme: OutlinedButtonThemeData(
-          style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFF39FF14),
-            side: const BorderSide(
-              color: Color(0xFF39FF14),
-              width: 1.2,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-        ),
-
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: const Color(0xFF222222),
@@ -151,23 +134,6 @@ class MyApp extends StatelessWidget {
             ),
           ),
           labelStyle: const TextStyle(color: Color(0xFFB8B8B8)),
-          hintStyle: const TextStyle(color: Color(0xFF8A8A8A)),
-        ),
-
-        checkboxTheme: CheckboxThemeData(
-          fillColor: WidgetStateProperty.all(
-            const Color(0xFF39FF14),
-          ),
-          checkColor: WidgetStateProperty.all(Colors.black),
-        ),
-
-        switchTheme: SwitchThemeData(
-          thumbColor: WidgetStateProperty.all(
-            const Color(0xFF39FF14),
-          ),
-          trackColor: WidgetStateProperty.all(
-            const Color(0x6639FF14),
-          ),
         ),
 
         appBarTheme: const AppBarTheme(
@@ -176,7 +142,7 @@ class MyApp extends StatelessWidget {
           centerTitle: true,
           titleTextStyle: TextStyle(
             fontSize: 18,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
             color: Color(0xFFF5F5F5),
           ),
           iconTheme: IconThemeData(color: Color(0xFF39FF14)),

@@ -29,7 +29,7 @@ class WorkoutMetricsService {
       // =========================
       // 🔵 SERIES
       // =========================
-      if (type == 'Series') {
+      if (type == 'Series' || type == 'Series descendentes' || type == 'Buscar RM') {
         final exercises =
             List<Map<String, dynamic>>.from(e['exercises'] ?? []);
 

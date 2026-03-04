@@ -21,7 +21,7 @@ class WorkoutSuggestionService {
     );
 
     for (final block in performed) {
-      if (block['type'] != 'Series') continue;
+      if (block['type'] != 'Series' && block['type'] != 'Series descendentes' && block['type'] != 'Buscar RM') continue;
 
       final exercises = List<Map<String, dynamic>>.from(
         block['exercises'] ?? [],
@@ -79,7 +79,7 @@ class WorkoutSuggestionService {
       final type = block['type'];
 
       // ================= SERIES =================
-      if (type == 'Series') {
+      if (type == 'Series' || type == 'Series descendentes' || type == 'Buscar RM') {
         final exercises = List<Map<String, dynamic>>.from(
           block['exercises'] ?? [],
         );

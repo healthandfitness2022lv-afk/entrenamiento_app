@@ -56,29 +56,7 @@ void initState() {
 }
 
 
-  List<FatigueRecalculationStep> _filterStepsByRange(
-  List<FatigueRecalculationStep> steps,
-) {
-  final now = DateTime.now();
 
-  final from = chartRange?.start ??
-      now.subtract(const Duration(days: 30));
-
-  final rawTo = chartRange?.end ?? now;
-
-  // 🔥 convertir a fin del día
-  final to = DateTime(
-    rawTo.year,
-    rawTo.month,
-    rawTo.day,
-    23, 59, 59, 999,
-  );
-
-  return steps.where((s) {
-    return !s.workoutDate.isBefore(from) &&
-        !s.workoutDate.isAfter(to);
-  }).toList();
-}
 
 List<FatigueRecalculationStep> _sortSteps(List<FatigueRecalculationStep> steps) {
   final sorted = [...steps]..sort((a, b) => a.workoutDate.compareTo(b.workoutDate));
@@ -86,23 +64,23 @@ List<FatigueRecalculationStep> _sortSteps(List<FatigueRecalculationStep> steps) 
 }
 
 List<FlSpot> _buildGlobalTimeline(
-  List<FatigueRecalculationStep> steps,
-  DateTime endTime, {
+  List<FatigueRecalculationStep> steps, {
+  required DateTime startTime,
+  required DateTime endTime,
   int topK = 6,
 }) {
   if (steps.isEmpty) return [];
 
   final sorted = _sortSteps(steps);
 
-  final start = sorted.first.workoutDate;
-  final end = endTime;
+  final globalStart = sorted.first.workoutDate;
 
   // Estado por músculo: fatiga + lastUpdate
   final Map<Muscle, double> fatigue = {
     for (final m in Muscle.values) m: 0.0,
   };
   final Map<Muscle, DateTime> lastUpdate = {
-    for (final m in Muscle.values) m: start,
+    for (final m in Muscle.values) m: globalStart,
   };
 
   // índice de workouts (steps) que tienen update real
@@ -117,8 +95,9 @@ List<FlSpot> _buildGlobalTimeline(
       for (final m in Muscle.values) {
         // recuperar hasta la hora exacta del workout
         fatigue[m] = FatigueService.recoverToNow(
+          muscle: m,
           fatigue: fatigue[m] ?? 0,
-          lastUpdate: lastUpdate[m] ?? start,
+          lastUpdate: lastUpdate[m] ?? globalStart,
           now: wTime,
         );
         lastUpdate[m] = wTime;
@@ -138,33 +117,36 @@ List<FlSpot> _buildGlobalTimeline(
 
   final spots = <FlSpot>[];
 
-  DateTime cursor = start;
-  while (!cursor.isAfter(end)) {
+  applyStepsUpTo(startTime.subtract(const Duration(microseconds: 1)));
+
+  DateTime cursor = DateTime(startTime.year, startTime.month, startTime.day);
+
+  while (!cursor.isAfter(endTime)) {
     applyStepsUpTo(cursor);
 
-    // recuperar desde lastUpdate hasta cursor
-    final values = <double>[];
-    for (final m in Muscle.values) {
-      final v = FatigueService.recoverToNow(
-        fatigue: fatigue[m] ?? 0,
-        lastUpdate: lastUpdate[m] ?? start,
-        now: cursor,
-      );
+    if (!cursor.isBefore(startTime)) {
+      final values = <double>[];
+      for (final m in Muscle.values) {
+        final v = FatigueService.recoverToNow(
+          muscle: m,
+          fatigue: fatigue[m] ?? 0,
+          lastUpdate: lastUpdate[m] ?? globalStart,
+          now: cursor,
+        );
 
-      // deja esta línea si quieres ignorar ruido
-      // (si quieres que se comporte EXACTO como las otras sin umbral, quítala)
-      if (v >= 5) values.add(v);
+        if (v >= 5) values.add(v);
+      }
+
+      double global = 0;
+      if (values.isNotEmpty) {
+        values.sort((a, b) => b.compareTo(a));
+        final top = values.take(topK).toList();
+        global = top.reduce((a, b) => a + b) / top.length;
+      }
+
+      final x = cursor.difference(startTime).inMinutes / 60.0 / 24.0;
+      spots.add(FlSpot(x, global));
     }
-
-    double global = 0;
-    if (values.isNotEmpty) {
-      values.sort((a, b) => b.compareTo(a));
-      final top = values.take(topK).toList();
-      global = top.reduce((a, b) => a + b) / top.length;
-    }
-
-    final x = cursor.difference(start).inMinutes / 60.0 / 24.0;
-    spots.add(FlSpot(x, global));
 
     cursor = cursor.add(const Duration(days: 1));
   }
@@ -176,8 +158,9 @@ final values = <double>[];
 
 for (final m in Muscle.values) {
   final v = FatigueService.recoverToNow(
+    muscle: m,
     fatigue: fatigue[m] ?? 0,
-    lastUpdate: lastUpdate[m] ?? start,
+    lastUpdate: lastUpdate[m] ?? globalStart,
     now: endTime,
   );
 
@@ -193,7 +176,7 @@ if (values.isNotEmpty) {
 }
 
 final finalX =
-    endTime.difference(start).inMinutes / 60.0 / 24.0;
+    endTime.difference(startTime).inMinutes / 60.0 / 24.0;
 
 spots.add(FlSpot(finalX, global));
 
@@ -208,6 +191,7 @@ spots.add(FlSpot(finalX, global));
 List<FlSpot> _buildMuscleTimeline(
   Muscle muscle,
   List<FatigueRecalculationStep> steps, {
+  required DateTime startTime,
   required DateTime endTime,
 }) {
   if (steps.isEmpty) return [];
@@ -215,64 +199,64 @@ List<FlSpot> _buildMuscleTimeline(
   final sorted = [...steps]
     ..sort((a, b) => a.workoutDate.compareTo(b.workoutDate));
 
-  final start = sorted.first.workoutDate;
+  final globalStart = sorted.first.workoutDate;
 
   double fatigue = 0;
-  DateTime lastUpdate = start;
+  DateTime lastUpdate = globalStart;
   int i = 0;
 
-  final spots = <FlSpot>[]; // 🔥 MOVER AQUÍ ARRIBA
+  final spots = <FlSpot>[]; 
 
   void applyStepsUpTo(DateTime t) {
     while (i < sorted.length && !sorted[i].workoutDate.isAfter(t)) {
       final step = sorted[i];
       final wTime = step.workoutDate;
 
-      // recuperar hasta workout
       fatigue = FatigueService.recoverToNow(
+        muscle: muscle,
         fatigue: fatigue,
         lastUpdate: lastUpdate,
         now: wTime,
       );
 
-      final xBefore =
-          wTime.difference(start).inMinutes / 60 / 24;
+      if (!wTime.isBefore(startTime)) {
+        final xBefore = wTime.difference(startTime).inMinutes / 60 / 24;
+        spots.add(FlSpot(xBefore, fatigue));
+      }
 
-      // 🔥 punto antes
-      spots.add(FlSpot(xBefore, fatigue));
-
-      // aplicar carga
       final load = step.loadApplied[muscle] ?? 0;
       fatigue += load;
 
       lastUpdate = wTime;
 
-      // 🔥 punto después
-      spots.add(FlSpot(xBefore + 0.0001, fatigue));
+      if (!wTime.isBefore(startTime)) {
+        final xAfter = wTime.difference(startTime).inMinutes / 60 / 24;
+        spots.add(FlSpot(xAfter + 0.0001, fatigue));
+      }
 
       i++;
     }
   }
 
-  DateTime cursor =
-      DateTime(start.year, start.month, start.day);
+  applyStepsUpTo(startTime.subtract(const Duration(microseconds: 1)));
 
-  final endDay =
-      DateTime(endTime.year, endTime.month, endTime.day, 23, 59, 59, 999);
+  DateTime cursor = DateTime(startTime.year, startTime.month, startTime.day);
+  final endDay = DateTime(endTime.year, endTime.month, endTime.day, 23, 59, 59, 999);
 
   while (!cursor.isAfter(endDay)) {
     applyStepsUpTo(cursor);
 
-    final value = FatigueService.recoverToNow(
-      fatigue: fatigue,
-      lastUpdate: lastUpdate,
-      now: cursor,
-    );
+    if (!cursor.isBefore(startTime)) {
+      final value = FatigueService.recoverToNow(
+        muscle: muscle,
+        fatigue: fatigue,
+        lastUpdate: lastUpdate,
+        now: cursor,
+      );
 
-    final x =
-        cursor.difference(start).inMinutes / 60 / 24;
-
-    spots.add(FlSpot(x, value));
+      final x = cursor.difference(startTime).inMinutes / 60 / 24;
+      spots.add(FlSpot(x, value));
+    }
 
     cursor = cursor.add(const Duration(days: 1));
   }
@@ -281,13 +265,13 @@ List<FlSpot> _buildMuscleTimeline(
   applyStepsUpTo(endTime);
 
   final finalValue = FatigueService.recoverToNow(
+    muscle: muscle,
     fatigue: fatigue,
     lastUpdate: lastUpdate,
     now: endTime,
   );
 
-  final finalX =
-      endTime.difference(start).inMinutes / 60 / 24;
+  final finalX = endTime.difference(startTime).inMinutes / 60 / 24;
 
   spots.add(FlSpot(finalX, finalValue));
 
@@ -296,15 +280,17 @@ List<FlSpot> _buildMuscleTimeline(
 
 List<FlSpot> _buildGroupTimeline(
   List<Muscle> muscles,
-  List<FatigueRecalculationStep> filtered,
-  DateTime endTime,
-) {
+  List<FatigueRecalculationStep> steps, {
+  required DateTime startTime,
+  required DateTime endTime,
+}) {
   final Map<double, List<double>> aggregated = {};
 
   for (final m in muscles) {
     final timeline = _buildMuscleTimeline(
       m,
-      filtered,
+      steps,
+      startTime: startTime,
       endTime: endTime,
     );
 
@@ -328,115 +314,83 @@ List<FlSpot> _buildGroupTimeline(
 }
 
 Widget _auditFatigueChart(List<FatigueRecalculationStep> steps) {
-  final filtered = _filterStepsByRange(steps);
-
-  final startDate = filtered.first.workoutDate;
-
-
-  if (filtered.isEmpty) {
-  return const Center(
-    child: Text(
-      "No hay datos en este rango",
-      style: TextStyle(color: Colors.grey),
-    ),
-  );
-}
-
-
-
-final series = <String, List<FlSpot>>{};
-final now = DateTime.now();
-
-// si hay chartRange, usar su end; si no, usar now
-
-// si el usuario eligió rango futuro (no debería), lo capamos a now
-final timelineEnd = now;
-
-if (viewMode == AuditViewMode.muscle) {
-  for (final m in chartMuscles) {
-    series[m.label] = [];
+  if (steps.isEmpty) {
+    return const Center(
+      child: Text(
+        "No hay datos",
+        style: TextStyle(color: Colors.grey),
+      ),
+    );
   }
-}
 
-else if (viewMode == AuditViewMode.anatomical) {
-  for (final group in selectedAnatomicalGroups) {
-    series[group.label] = [];
-  }
-}
+  final now = DateTime.now();
+  final startDateRaw = chartRange?.start ?? now.subtract(const Duration(days: 30));
+  final startDate = DateTime(startDateRaw.year, startDateRaw.month, startDateRaw.day);
+  
+  final endDateRaw = chartRange?.end ?? now;
+  final timelineEnd = DateTime(endDateRaw.year, endDateRaw.month, endDateRaw.day, 23, 59, 59, 999);
 
-else if (viewMode == AuditViewMode.functional) {
-  for (final group in selectedFunctionalGroups) {
-    series[group.label] = [];
-  }
-}
-
-
+  final series = <String, List<FlSpot>>{};
 
   if (viewMode == AuditViewMode.muscle) {
-  for (final m in chartMuscles) {
-    series[m.label] =
-    _buildMuscleTimeline(
-      m,
-      filtered,
-      endTime: timelineEnd,
-    );
-  }
-}
-
-if (viewMode == AuditViewMode.anatomical) {
-  for (final group in selectedAnatomicalGroups) {
-    series[group.label] =
-    _buildGroupTimeline(
-      anatomicalGroups[group]!,
-      filtered,
-      timelineEnd,
-    );
-  }
-}
-
-if (viewMode == AuditViewMode.functional) {
-  for (final group in selectedFunctionalGroups) {
-    series[group.label] =
-    _buildGroupTimeline(
-      functionalGroups[group]!,
-      filtered,
-      timelineEnd,
-    );
+    for (final m in chartMuscles) {
+      series[m.label] = _buildMuscleTimeline(
+        m,
+        steps,
+        startTime: startDate,
+        endTime: timelineEnd,
+      );
+    }
+  } else if (viewMode == AuditViewMode.anatomical) {
+    for (final group in selectedAnatomicalGroups) {
+      series[group.label] = _buildGroupTimeline(
+        anatomicalGroups[group]!,
+        steps,
+        startTime: startDate,
+        endTime: timelineEnd,
+      );
+    }
+  } else if (viewMode == AuditViewMode.functional) {
+    for (final group in selectedFunctionalGroups) {
+      series[group.label] = _buildGroupTimeline(
+        functionalGroups[group]!,
+        steps,
+        startTime: startDate,
+        endTime: timelineEnd,
+      );
+    }
   }
 
+  final globalSeries = <FlSpot>[];
 
-}
-final globalSeries = <FlSpot>[];
+  if (showGlobalFatigue) {
+    globalSeries.addAll(
+      _buildGlobalTimeline(
+        steps,
+        startTime: startDate,
+        endTime: timelineEnd,
+        topK: 6,
+      ),
+    );
+  }
 
-if (showGlobalFatigue) {
-  globalSeries.addAll(
-  _buildGlobalTimeline(
-    filtered,
-    timelineEnd,
-    topK: 6,
-  ),
-);
-}
+  double maxYValue = 100;
 
-double maxYValue = 100;
+  for (final entry in series.values) {
+    for (final spot in entry) {
+      if (spot.y > maxYValue) {
+        maxYValue = spot.y;
+      }
+    }
+  }
 
-for (final entry in series.values) {
-  for (final spot in entry) {
+  for (final spot in globalSeries) {
     if (spot.y > maxYValue) {
       maxYValue = spot.y;
     }
   }
-}
 
-for (final spot in globalSeries) {
-  if (spot.y > maxYValue) {
-    maxYValue = spot.y;
-  }
-}
-
-final totalDays = filtered.last.workoutDate
-    .difference(startDate)
-    .inDays + 1;
+  final totalDays = timelineEnd.difference(startDate).inDays + 1;
 
 double maxXValue = 0;
 
@@ -476,7 +430,39 @@ maxX: maxXValue + 0.5,
 minY: 0,
 maxY: maxYValue + 10,
 
-        gridData: FlGridData(show: true),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: true,
+          getDrawingHorizontalLine: (value) => const FlLine(color: Color(0xFF2A2A2A), strokeWidth: 1),
+          getDrawingVerticalLine: (value) => const FlLine(color: Color(0xFF2A2A2A), strokeWidth: 1),
+        ),
+        backgroundColor: const Color(0xFF1B1B1B),
+        rangeAnnotations: RangeAnnotations(
+          horizontalRangeAnnotations: [
+            HorizontalRangeAnnotation(
+              y1: 85,
+              y2: maxYValue + 15,
+              color: Colors.redAccent.withOpacity(0.15),
+            ),
+          ],
+        ),
+        extraLinesData: ExtraLinesData(
+          horizontalLines: [
+            HorizontalLine(
+              y: 85,
+              color: Colors.redAccent.withOpacity(0.5),
+              strokeWidth: 1,
+              dashArray: [5, 5],
+              label: HorizontalLineLabel(
+                show: true,
+                alignment: Alignment.topRight,
+                padding: const EdgeInsets.only(right: 5, bottom: 2),
+                style: const TextStyle(fontSize: 10, color: Colors.redAccent, fontWeight: FontWeight.bold),
+                labelResolver: (_) => 'AL LÍMITE (85%+)',
+              ),
+            ),
+          ],
+        ),
         titlesData: FlTitlesData(
           leftTitles: AxisTitles(
   sideTitles: SideTitles(
@@ -486,7 +472,7 @@ maxY: maxYValue + 10,
     getTitlesWidget: (value, _) {
       return Text(
         value.toInt().toString(),
-        style: const TextStyle(fontSize: 11),
+        style: const TextStyle(fontSize: 11, color: Colors.white70),
       );
     },
   ),
@@ -510,7 +496,7 @@ maxY: maxYValue + 10,
         padding: const EdgeInsets.only(top: 6),
         child: Text(
           "${date.day}/${date.month}",
-          style: const TextStyle(fontSize: 11),
+          style: const TextStyle(fontSize: 11, color: Colors.white70),
         ),
       );
     },
@@ -555,27 +541,43 @@ maxY: maxYValue + 10,
         ),
         lineBarsData: [
           ...series.entries.map((e) {
-  final index = series.keys.toList().indexOf(e.key);
+            final index = series.keys.toList().indexOf(e.key);
 
-  return LineChartBarData(
-
+            return LineChartBarData(
               spots: e.value,
               isCurved: false,
-              barWidth: 2,
+              barWidth: 3,
               color: heatmapColor(40 + index * 5),
-
-              dotData: FlDotData(show: true),
+              dotData: FlDotData(
+                show: true,
+                checkToShowDot: (spot, barData) {
+                  final i = barData.spots.indexOf(spot);
+                  if (i == 0) return false;
+                  final prev = barData.spots[i - 1];
+                  // Si el salto vertical es repentino y sube, es un día de entreno!
+                  return (spot.x - prev.x).abs() < 0.001 && spot.y > prev.y + 0.5;
+                },
+                getDotPainter: (spot, percent, barData, index) {
+                  return FlDotCirclePainter(
+                    radius: 4,
+                    color: const Color(0xFF1B1B1B),
+                    strokeWidth: 2,
+                    strokeColor: barData.color ?? Colors.white,
+                  );
+                },
+              ),
             );
           }),
           if (showGlobalFatigue && globalSeries.isNotEmpty)
-    LineChartBarData(
-      spots: globalSeries,
-      isCurved: false,
-      barWidth: 4,
-      color: const Color.fromARGB(255, 221, 0, 0),
-      dotData: FlDotData(show: false),
-    ),
-],
+            LineChartBarData(
+              spots: globalSeries,
+              isCurved: false,
+              barWidth: 4,
+              color: const Color(0xFF39FF14), // Color de acento neón de la app
+              shadow: const Shadow(color: Color(0xFF39FF14), blurRadius: 4),
+              dotData: FlDotData(show: false),
+            ),
+        ],
       ),
     ),
   ),));
@@ -648,14 +650,36 @@ Widget _functionalSelector() {
 }
 
 
+  Widget _buildQuickRangeBtn(String label, int days) {
+    return ActionChip(
+      label: Text(label, style: const TextStyle(fontSize: 12, color: Colors.white)),
+      backgroundColor: const Color(0xFF222222),
+      side: BorderSide.none,
+      onPressed: () {
+        final now = DateTime.now();
+        setState(() {
+          chartRange = DateTimeRange(
+            start: now.subtract(Duration(days: days)),
+            end: now,
+          );
+        });
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: const Text("Evolución de fatiga"),
+        title: const Text("Evolución de fatiga", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF1B1B1B),
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
         actions: [
           Switch(
             value: showGlobalFatigue,
+            activeColor: const Color(0xFF39FF14),
             onChanged: (v) {
               setState(() {
                 showGlobalFatigue = v;
@@ -664,7 +688,7 @@ Widget _functionalSelector() {
           ),
           const Padding(
             padding: EdgeInsets.only(right: 12),
-            child: Center(child: Text("Promedio")),
+            child: Center(child: Text("Promedio", style: TextStyle(color: Colors.white70))),
           ),
         ],
       ),
@@ -713,33 +737,56 @@ ChoiceChip(
 
 
             /// RANGO
-            Row(
-              children: [
-                TextButton.icon(
-                  onPressed: () async {
-                    final now = DateTime.now();
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFF333333)),
+                      backgroundColor: const Color(0xFF1B1B1B),
+                    ),
+                    onPressed: () async {
+                      final now = DateTime.now();
+                      final range = await showDateRangePicker(
+                        context: context,
+                        builder: (context, child) {
+                          return Theme(
+                            data: Theme.of(context).copyWith(
+                              colorScheme: const ColorScheme.dark(
+                                primary: Color(0xFF39FF14),
+                                onPrimary: Colors.black,
+                                surface: Color(0xFF1B1B1B),
+                                onSurface: Colors.white,
+                              ),
+                            ),
+                            child: child!,
+                          );
+                        },
+                        firstDate: now.subtract(const Duration(days: 365)),
+                        lastDate: now,
+                        initialDateRange: chartRange ?? DateTimeRange(
+                          start: now.subtract(const Duration(days: 30)),
+                          end: now,
+                        ),
+                      );
 
-                    final range = await showDateRangePicker(
-                      context: context,
-                      firstDate: now.subtract(const Duration(days: 365)),
-                      lastDate: now,
-                      initialDateRange:
-                          chartRange ??
-                          DateTimeRange(
-                            start: now.subtract(const Duration(days: 30)),
-                            end: now,
-                          ),
-                    );
-
-                    if (range != null) {
-                      setState(() => chartRange = range);
-                    }
-                  },
-                  icon: const Icon(Icons.date_range),
-                  label: const Text("Rango"),
-                ),
-                const Spacer(),
-              ],
+                      if (range != null) {
+                        setState(() => chartRange = range);
+                      }
+                    },
+                    icon: const Icon(Icons.date_range, size: 16),
+                    label: const Text("Rango", style: TextStyle(fontSize: 12)),
+                  ),
+                  const SizedBox(width: 8),
+                  _buildQuickRangeBtn("7 Días", 6),
+                  const SizedBox(width: 8),
+                  _buildQuickRangeBtn("1 Mes", 30),
+                  const SizedBox(width: 8),
+                  _buildQuickRangeBtn("3 Meses", 90),
+                ],
+              ),
             ),
 
             const SizedBox(height: 16),

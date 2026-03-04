@@ -9,7 +9,7 @@ double calculateAverageWorkoutRPE(
     // =======================
     // 🔵 SERIES
     // =======================
-    if (block['type'] == 'Series') {
+    if (block['type'] == 'Series' || block['type'] == 'Series descendentes' || block['type'] == 'Buscar RM') {
 
       final exercises =
           List<Map<String, dynamic>>.from(block['exercises'] ?? []);
