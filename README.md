@@ -95,6 +95,17 @@ Ejemplos correctos:
 
 ---
 
+### 🆕 Últimas Actualizaciones
+
+- **Refactorización de `BlocksScreen`**: Implementación de una interfaz profesional de explorador de archivos con barra lateral para carpetas, soporte para arrastrar y soltar (Drag and Drop) y gestión de bloques sin carpeta.
+- **Mejoras en `MyWorkoutsScreen`**: Ahora se muestran los logros desbloqueados directamente en el historial de entrenamientos, con mejoras visuales en la expansión de sesiones.
+- **Optimización de `AddWorkoutScreen`**: Añadida la selección múltiple de ejercicios y filtros por tipo de ejercicio mediante chips, facilitando la creación de rutinas.
+- **Refinamiento de Logros**: Ajuste en los umbrales de RPE y corrección en la lógica de fechas para asegurar que los logros reflejen el momento histórico real del récord.
+- **Gestión de Facturas**: Creación del módulo `InvoicesScreen` para la visualización y gestión detallada de facturas del usuario.
+- **Mejoras en Perfil**: Rediseño de la pantalla de perfil para una presentación de datos más clara y estética.
+
+---
+
 ## 🚀 Estado del proyecto
 
 - Entorno rico en funcionalidades para usuarios hiper exigentes, no solo casuales.
