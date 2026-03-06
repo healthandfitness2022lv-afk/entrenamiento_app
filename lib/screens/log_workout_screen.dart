@@ -97,6 +97,8 @@ class _LogWorkoutScreenState extends State<LogWorkoutScreen>
 
 
 
+/// Carga TODOS los bloques planificados para hoy y los une en una sola
+/// estructura de "rutina" con múltiples bloques, compatible con el ViewModel.
 Future<Map<String, dynamic>?> _getTodayPlannedRoutine() async {
   final uid = FirebaseAuth.instance.currentUser!.uid;
 
@@ -109,23 +111,39 @@ Future<Map<String, dynamic>?> _getTodayPlannedRoutine() async {
       .where('athleteId', isEqualTo: uid)
       .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
       .where('date', isLessThan: Timestamp.fromDate(end))
-      .limit(1)
       .get();
 
   if (snap.docs.isEmpty) return null;
 
-  final planned = snap.docs.first;
+  // Recolectar todos los bloques del día
+  final List<Map<String, dynamic>> allBlocks = [];
+  final List<String> blockTitles = [];
 
-  final routineDoc = await FirebaseFirestore.instance
-      .collection('routines')
-      .doc(planned['routineId'])
-      .get();
+  for (final planned in snap.docs) {
+    final data = planned.data();
 
-  if (!routineDoc.exists) return null;
+    // Nuevo formato: blockId
+    if (data.containsKey('blockId') && data['blockId'] != null) {
+      final blockDoc = await FirebaseFirestore.instance
+          .collection('blocks')
+          .doc(data['blockId'] as String)
+          .get();
+
+      if (blockDoc.exists) {
+        allBlocks.add({...blockDoc.data()!});
+        blockTitles.add(data['blockTitle'] ?? blockDoc.data()?['title'] ?? 'Bloque');
+      }
+    }
+  }
+
+  if (allBlocks.isEmpty) return null;
 
   return {
-    'id': routineDoc.id,
-    ...routineDoc.data()!,
+    'id': null,
+    'name': blockTitles.length == 1
+        ? blockTitles.first
+        : 'Sesión del día (${allBlocks.length} bloques)',
+    'blocks': allBlocks,
   };
 }
 
@@ -208,8 +226,8 @@ Map<String, dynamic>? _getExerciseFromCatalog(String name) {
         .toList();
 
     viewModel.routine = {
-      'id': workout['routineId'],
-      'name': workout['routineName'],
+      'id': workout['blockId'],
+      'name': workout['blockTitle'] ?? workout['routineName'] ?? 'Entrenamiento',
       'blocks': _rebuildBlocksFromPerformed(performed),
     };
 
@@ -357,26 +375,25 @@ List<Map<String, dynamic>> _extractCircuitExercises(
 
   // ================= LOAD =================
 
+  /// Carga todos los bloques disponibles en segundo plano para el selector.
   Future<void> _loadAvailableRoutinesBackground() async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-
-    final assignSnap = await FirebaseFirestore.instance
-        .collection('routine_assignments')
-        .where('athleteId', isEqualTo: uid)
-        .where('status', isEqualTo: 'active')
+    final blocksSnap = await FirebaseFirestore.instance
+        .collection('blocks')
+        .orderBy('createdAt', descending: true)
         .get();
 
     availableRoutines.clear();
 
-    for (final d in assignSnap.docs) {
-      final routineSnap = await FirebaseFirestore.instance
-          .collection('routines')
-          .doc(d['routineId'])
-          .get();
-
-      if (routineSnap.exists) {
-        availableRoutines.add({'id': routineSnap.id, ...routineSnap.data()!});
-      }
+    for (final d in blocksSnap.docs) {
+      final data = d.data();
+      final title = (data['title'] ?? '').toString().trim();
+      final type = (data['type'] ?? 'Bloque').toString();
+      // Envolvemos el bloque individual en el formato que espera el ViewModel
+      availableRoutines.add({
+        'id': d.id,
+        'name': title.isNotEmpty ? title : type,
+        'blocks': [data],
+      });
     }
   }
 
@@ -1227,7 +1244,7 @@ List<Map<String, dynamic>> _extractCircuitExercises(
               progressAlerts: alerts,
               oldStats: computedOldStats,
               newStats: newStats,
-              routineName: viewModel.routine?['name'] ?? 'Entrenamiento libre',
+              sessionName: viewModel.routine?['name'] ?? 'Entrenamiento libre',
               durationMinutes: viewModel.originalDurationMinutes ?? 
                  (DateTime.now().difference(viewModel.workoutStartedAt ?? DateTime.now()).inMinutes),
             ),

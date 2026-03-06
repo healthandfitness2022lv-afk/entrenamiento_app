@@ -470,7 +470,7 @@ class _MyWorkoutDetailsScreenState extends State<MyWorkoutDetailsScreen>
                 const SizedBox(height: 32),
 
                 // ─── DETALLE ───────────────────────────────────────
-                _workoutDetailCompact(workoutSets),
+                _workoutDetailCompact(),
                 
                 const SizedBox(height: 60),
               ],
@@ -509,7 +509,7 @@ class _MyWorkoutDetailsScreenState extends State<MyWorkoutDetailsScreen>
             children: [
               Expanded(
                 child: Text(
-                  workoutData['routineName']?.toUpperCase() ?? 'ENTRENAMIENTO',
+                  workoutData['sessionName']?.toUpperCase() ?? workoutData['routineName']?.toUpperCase() ?? 'ENTRENAMIENTO',
                   style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
@@ -750,20 +750,444 @@ class _MyWorkoutDetailsScreenState extends State<MyWorkoutDetailsScreen>
     );
   }
 
+  void _showFatigueInfoDialog(
+    BuildContext context, {
+    required double rpe,
+    required double fRpe,
+    required double exerciseFactor,
+    required double eqFactor,
+    required double blockF,
+    required double vFactor,
+    required double totalFatigue,
+  }) {
+    showDialog(
+      context: context,
+      builder: (_) {
+        return AlertDialog(
+          backgroundColor: _kSurface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: _kDivider)),
+          title: Row(
+            children: const [
+              Icon(Icons.local_fire_department, color: Colors.deepOrangeAccent, size: 24),
+              SizedBox(width: 8),
+              Expanded(child: Text('CÁLCULO DE FATIGA', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: _kTextPrimary))),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('La fatiga de esta serie se calculó usando multiplicadores sobre el involucramiento muscular del ejercicio:', style: TextStyle(fontSize: 11, color: _kTextSecondary)),
+              const SizedBox(height: 16),
+              _buildFormulaRow('Esfuerzo Base (RPE)', rpe.toStringAsFixed(1), 'x'),
+              _buildFormulaRow('Factor Exponencial RPE', fRpe.toStringAsFixed(2), 'x'),
+              _buildFormulaRow('Multiplicador de Ejercicio', exerciseFactor.toStringAsFixed(2), 'x'),
+              _buildFormulaRow('Multiplicador de Equipo', eqFactor.toStringAsFixed(2), 'x'),
+              _buildFormulaRow('Multiplicador de Estructura', blockF.toStringAsFixed(2), 'x'),
+              _buildFormulaRow('Lateralidad (Lados)', vFactor.toStringAsFixed(1), '='),
+              const Divider(color: _kDivider, height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('CARGA TOTAL APORTADA:', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: _kTextSecondary)),
+                  Text(totalFatigue.toStringAsFixed(2), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Colors.deepOrangeAccent)),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('ENTENDIDO', style: TextStyle(color: _kAccent, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildFormulaRow(String label, String value, String operatorStr) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 11, color: _kTextPrimary))),
+          Row(
+            children: [
+              Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _kAccentLight ?? _kTextPrimary)),
+              const SizedBox(width: 12),
+              SizedBox(width: 10, child: Text(operatorStr, textAlign: TextAlign.right, style: const TextStyle(fontSize: 10, color: _kTextSecondary, fontWeight: FontWeight.bold))),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  static const _kAccentLight = Color(0xFF67FF4F); // just a light accent for formula values
+
   // ──────────────────────────────────────────────────────
   // 🔍 DETALLE TÉCNICO
   // ──────────────────────────────────────────────────────
-  Widget _workoutDetailCompact(List<WorkoutSet> sets) {
-    final Map<String, Map<String, List<WorkoutSet>>> byBlock = {};
-
-    for (final s in sets) {
-      byBlock.putIfAbsent(s.sourceType, () => {});
-      byBlock[s.sourceType]!.putIfAbsent(s.exercise, () => []);
-      byBlock[s.sourceType]![s.exercise]!.add(s);
-    }
-
+  Widget _workoutDetailCompact() {
     final Map<Muscle, double> totalAcc = {};
-    final blockOrder = ['Series', 'Circuito', 'Tabata'];
+    final List<Widget> blocks = [];
+
+    for (int blockIndex = 0; blockIndex < performed.length; blockIndex++) {
+      final e = performed[blockIndex];
+      final type = e['type'] ?? 'Series';
+
+      if (type == 'Series' || type == 'Buscar RM') {
+        final exercises = List<Map<String, dynamic>>.from(e['exercises'] ?? []);
+        final List<Widget> exWidgets = [];
+
+        for (final ex in exercises) {
+          final exName = ex['exercise'];
+          final exData = exercisesMap[exName];
+          final exerciseFactor = exerciseTypeFactorOf(exData?['exerciseType']);
+          final eqFactor = equipmentFactorOf(exData?['equipment']);
+
+          final Map<Muscle, double> acc = {};
+          final setsList = List<Map<String, dynamic>>.from(ex['sets'] ?? []);
+
+          int doneSetsCount = 0;
+          final List<Widget> setsBreakdown = [];
+          double rpeTotal = 0;
+
+          for (int i = 0; i < setsList.length; i++) {
+            final s = setsList[i];
+            if (s.containsKey('done') && s['done'] != true) continue;
+
+            doneSetsCount++;
+            final double rpe = (s['rpe'] as num?)?.toDouble() ?? 5.0;
+            final double weight = (s['weight'] as num?)?.toDouble() ?? 0.0;
+            final int reps = (s['reps'] as num?)?.toInt() ?? 0;
+            final bool perSide = s['perSide'] == true;
+
+            rpeTotal += rpe;
+            double setFatigue = 0.0;
+
+            if (exData != null) {
+              final muscleWeights = _resolveMuscleWeightsFromExercise(exData);
+              final tempSet = WorkoutSet(exercise: exName, sets: 1, reps: reps, rpe: rpe, weight: weight, muscleWeights: muscleWeights, sourceType: type);
+              final blockF = _structureFactor(tempSet);
+              final vFactor = perSide ? 2.0 : 1.0;
+
+              for (final entry in muscleWeights.entries) {
+                final v = 1 * rpe * exerciseFactor * eqFactor * rpeFactor(rpe) * blockF * vFactor * entry.value;
+                acc[entry.key] = (acc[entry.key] ?? 0) + v;
+                totalAcc[entry.key] = (totalAcc[entry.key] ?? 0) + v;
+                setFatigue += v;
+              }
+            }
+
+            setsBreakdown.add(
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Serie ${i + 1}: $reps reps · ${weight.toStringAsFixed(1)} kg${perSide ? ' (x lado)' : ''}',
+                      style: const TextStyle(fontSize: 10, color: _kTextSecondary),
+                    ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'RPE ${rpe.toStringAsFixed(1)}  |  🔥 ${setFatigue.toStringAsFixed(1)}',
+                          style: const TextStyle(fontSize: 9, color: _kAccent, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () => _showFatigueInfoDialog(
+                            context,
+                            rpe: rpe,
+                            fRpe: rpeFactor(rpe),
+                            exerciseFactor: exerciseFactor,
+                            eqFactor: eqFactor,
+                            blockF: _structureFactor(WorkoutSet(exercise: exName, sets: 1, reps: reps, rpe: rpe, weight: weight, muscleWeights: const {}, sourceType: type)),
+                            vFactor: perSide ? 2.0 : 1.0,
+                            totalFatigue: setFatigue,
+                          ),
+                          child: const Icon(Icons.info_outline_rounded, size: 14, color: _kTextSecondary),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          if (doneSetsCount == 0) continue;
+
+          double avgExRpe = rpeTotal / doneSetsCount;
+
+          exWidgets.add(
+            _exerciseItem(
+              name: exName,
+              rpe: avgExRpe,
+              detailsWidget: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: setsBreakdown,
+              ),
+              color: _sourceColor(type),
+              muscleAcc: acc,
+            ),
+          );
+        }
+
+        if (exWidgets.isNotEmpty) {
+          blocks.add(_blockLayout(
+            '$type ${blockIndex + 1}'.toUpperCase(),
+            _sourceColor(type),
+            Column(children: exWidgets),
+          ));
+        }
+
+      } else if (type == 'Series descendentes') {
+        final exercises = List<Map<String, dynamic>>.from(e['exercises'] ?? []);
+        if (exercises.isEmpty) continue;
+        
+        final List<Widget> sdWidgets = [];
+        
+        int maxSets = 0;
+        for (final ex in exercises) {
+          final sets = List<Map<String, dynamic>>.from(ex['sets'] ?? []);
+          if (sets.length > maxSets) maxSets = sets.length;
+        }
+
+        for (int i = 0; i < maxSets; i++) {
+          final List<Widget> innerExWidgets = [];
+          
+          int indicativeReps = 0;
+          for(final ex in exercises) {
+            final sets = List<Map<String, dynamic>>.from(ex['sets'] ?? []);
+            if (sets.length > i && (sets[i]['reps'] ?? 0) > 0) {
+               indicativeReps = sets[i]['reps'];
+               break;
+            }
+          }
+
+          sdWidgets.add(
+            Container(
+              margin: const EdgeInsets.only(top: 16, bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: _sourceColor(type).withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
+              child: Text('${indicativeReps > 0 ? '$indicativeReps REPS' : 'SERIE ${i+1}'}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: _sourceColor(type), letterSpacing: 1)),
+            ),
+          );
+
+          for (final ex in exercises) {
+            final setsList = List<Map<String, dynamic>>.from(ex['sets'] ?? []);
+            if (i >= setsList.length) continue;
+            final s = setsList[i];
+            if (s.containsKey('done') && s['done'] != true) continue;
+
+            final exName = ex['exercise'];
+            final exData = exercisesMap[exName];
+            final exerciseFactor = exerciseTypeFactorOf(exData?['exerciseType']);
+            final eqFactor = equipmentFactorOf(exData?['equipment']);
+
+            final double rpe = (s['rpe'] as num?)?.toDouble() ?? 5.0;
+            final double weight = (s['weight'] as num?)?.toDouble() ?? 0.0;
+            final int reps = (s['reps'] as num?)?.toInt() ?? 0;
+            final bool perSide = s['perSide'] == true;
+
+            final Map<Muscle, double> acc = {};
+            double setFatigue = 0.0;
+            
+            if (exData != null) {
+              final muscleWeights = _resolveMuscleWeightsFromExercise(exData);
+              final tempSet = WorkoutSet(exercise: exName, sets: 1, reps: reps, rpe: rpe, weight: weight, muscleWeights: muscleWeights, sourceType: type);
+              final blockF = _structureFactor(tempSet);
+              final vFactor = perSide ? 2.0 : 1.0;
+
+              for (final entry in muscleWeights.entries) {
+                final v = 1 * rpe * exerciseFactor * eqFactor * rpeFactor(rpe) * blockF * vFactor * entry.value;
+                setFatigue += v;
+                acc[entry.key] = (acc[entry.key] ?? 0) + v;
+                totalAcc[entry.key] = (totalAcc[entry.key] ?? 0) + v;
+              }
+            }
+
+            innerExWidgets.add(
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(exName.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: _kTextPrimary, letterSpacing: 0.5)),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(color: _sourceColor(type).withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+                          child: Text('RPE ${rpe.toStringAsFixed(1)}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, color: _sourceColor(type))),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('$reps reps · ${weight.toStringAsFixed(1)} kg${perSide ? ' (x lado)' : ''}', style: const TextStyle(fontSize: 10, color: _kTextSecondary)),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('🔥 ${setFatigue.toStringAsFixed(1)}', style: const TextStyle(fontSize: 9, color: Colors.deepOrangeAccent, fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 4),
+                            GestureDetector(
+                              onTap: () => _showFatigueInfoDialog(
+                                context,
+                                rpe: rpe,
+                                fRpe: rpeFactor(rpe),
+                                exerciseFactor: exerciseFactor,
+                                eqFactor: eqFactor,
+                                blockF: _structureFactor(WorkoutSet(exercise: exName, sets: 1, reps: reps, rpe: rpe, weight: weight, muscleWeights: const {}, sourceType: type)),
+                                vFactor: perSide ? 2.0 : 1.0,
+                                totalFatigue: setFatigue,
+                              ),
+                              child: const Icon(Icons.info_outline_rounded, size: 14, color: _kTextSecondary),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _muscleChips(acc),
+                  ],
+                ),
+              )
+            );
+          }
+
+          if (innerExWidgets.isNotEmpty) {
+            sdWidgets.addAll(innerExWidgets);
+          }
+        }
+
+        if (sdWidgets.isNotEmpty) {
+          blocks.add(_blockLayout(
+            '$type ${blockIndex + 1}'.toUpperCase(),
+            _sourceColor(type),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: sdWidgets),
+          ));
+        }
+
+      } else if (type == 'Circuito') {
+        final rounds = List<Map<String, dynamic>>.from(e['rounds'] ?? []);
+        final List<Widget> roundWidgets = [];
+
+        for (final round in rounds) {
+          final int r = round['round'];
+          final exercises = List<Map<String, dynamic>>.from(round['exercises'] ?? []);
+          final List<Widget> exWidgets = [];
+
+          roundWidgets.add(
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: _kCircuitoColor.withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
+              child: Text('RONDA $r', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: _kCircuitoColor, letterSpacing: 1)),
+            ),
+          );
+
+          for (final ex in exercises) {
+            final exName = ex['exercise'];
+            final exData = exercisesMap[exName];
+            final double rpe = (ex['rpe'] as num?)?.toDouble() ?? 5.0;
+            final double exerciseFactor = exerciseTypeFactorOf(exData?['exerciseType']);
+            final double weight = (ex['weight'] as num?)?.toDouble() ?? 0.0;
+            final bool perSide = ex['perSide'] == true;
+
+            final Map<Muscle, double> acc = {};
+            if (exData != null) {
+              final muscleWeights = _resolveMuscleWeightsFromExercise(exData);
+              final eqFactor = equipmentFactorOf(exData?['equipment']);
+              final tempSet = WorkoutSet(exercise: exName, sets: 1, reps: ex['reps'] ?? 1, rpe: rpe, weight: weight, muscleWeights: muscleWeights, sourceType: 'Circuito');
+              final blockF = _structureFactor(tempSet);
+              final vFactor = perSide ? 2.0 : 1.0;
+
+              for (final entry in muscleWeights.entries) {
+                final v = rpe * rpeFactor(rpe) * exerciseFactor * eqFactor * blockF * vFactor * entry.value;
+                acc[entry.key] = (acc[entry.key] ?? 0) + v;
+                totalAcc[entry.key] = (totalAcc[entry.key] ?? 0) + v;
+              }
+            }
+
+            final detailsStr = '${ex['reps'] ?? ex['seconds'] ?? '-'} ${ex['reps'] != null ? 'REPS' : 'S'} · ${weight.toStringAsFixed(1)} KG${perSide ? ' (x lado)' : ''}';
+            exWidgets.add(
+              _exerciseItem(
+                name: exName,
+                rpe: rpe,
+                detailsWidget: Text(detailsStr, style: const TextStyle(fontSize: 10, color: _kTextSecondary)),
+                color: _kCircuitoColor,
+                muscleAcc: acc,
+              ),
+            );
+          }
+
+          roundWidgets.addAll(exWidgets);
+        }
+
+        if (roundWidgets.isNotEmpty) {
+          blocks.add(_blockLayout(
+            'CIRCUITO ${blockIndex + 1}',
+            _kCircuitoColor,
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: roundWidgets),
+          ));
+        }
+
+      } else if (type == 'Tabata') {
+        final exercises = List<Map<String, dynamic>>.from(e['exercises'] ?? []);
+        final List<Widget> exWidgets = [];
+
+        for (final ex in exercises) {
+          final exName = ex['exercise'];
+          final exData = exercisesMap[exName];
+          final double rpe = (ex['rpe'] as num?)?.toDouble() ?? 5.0;
+          final double exerciseFactor = exerciseTypeFactorOf(exData?['exerciseType']);
+
+          final Map<Muscle, double> acc = {};
+          if (exData != null) {
+            final muscleWeights = _resolveMuscleWeightsFromExercise(exData);
+            final eqFactor = equipmentFactorOf(exData?['equipment']);
+            final tempSet = WorkoutSet(exercise: exName, sets: 1, reps: 1, rpe: rpe, muscleWeights: muscleWeights, sourceType: 'Tabata');
+            final blockF = _structureFactor(tempSet);
+
+            for (final entry in muscleWeights.entries) {
+              final v = rpe * rpeFactor(rpe) * exerciseFactor * eqFactor * blockF * entry.value;
+              acc[entry.key] = (acc[entry.key] ?? 0) + v;
+              totalAcc[entry.key] = (totalAcc[entry.key] ?? 0) + v;
+            }
+          }
+
+          exWidgets.add(
+            _exerciseItem(
+              name: exName,
+              rpe: rpe,
+              detailsWidget: const Text('TABATA', style: TextStyle(fontSize: 10, color: _kTextSecondary)),
+              color: _kTabataColor,
+              muscleAcc: acc,
+            ),
+          );
+        }
+
+        if (exWidgets.isNotEmpty) {
+          blocks.add(_blockLayout(
+            'TABATA ${blockIndex + 1}',
+            _kTabataColor,
+            Column(children: exWidgets),
+          ));
+        }
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -776,109 +1200,7 @@ class _MyWorkoutDetailsScreenState extends State<MyWorkoutDetailsScreen>
           ),
         ),
         const SizedBox(height: 20),
-
-        ...blockOrder.map((blockType) {
-          if (blockType == 'Circuito') {
-            final circuitos = performed.where((e) => e['type'] == 'Circuito').toList();
-            if (circuitos.isEmpty) return const SizedBox();
-
-            return Column(
-              children: circuitos.asMap().entries.map((entry) {
-                final index = entry.key;
-                final c = entry.value;
-                final Map<Muscle, double> circuitAccLoc = {};
-                final rounds = List<Map<String, dynamic>>.from(c['rounds']);
-
-                return _blockLayout(
-                  'CIRCUITO ${index + 1}',
-                  _kCircuitoColor,
-                  Column(
-                    children: rounds.map((round) {
-                      final int r = round['round'];
-                      final exercises = List<Map<String, dynamic>>.from(round['exercises']);
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            margin: const EdgeInsets.symmetric(vertical: 12),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(color: _kCircuitoColor.withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
-                            child: Text('RONDA $r', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: _kCircuitoColor, letterSpacing: 1)),
-                          ),
-                          ...exercises.map((ex) {
-                            final exData = exercisesMap[ex['exercise']];
-                            final double rpe = (ex['rpe'] as num).toDouble();
-                            final double fRpe = rpeFactor(rpe);
-                            final double exerciseFactor = exerciseTypeFactorOf(exData?['exerciseType']);
-                            final tempSet = WorkoutSet(exercise: ex['exercise'], sets: 1, reps: ex['reps'] ?? 1, rpe: rpe, weight: ex['weight']?.toDouble(), muscleWeights: const {}, sourceType: 'Circuito');
-                            final double blockF = _structureFactor(tempSet);
-                            
-                            final Map<Muscle, double> acc = {};
-                            if (exData != null) {
-                              final muscleWeights = _resolveMuscleWeightsFromExercise(exData);
-                              final eqFactor = equipmentFactorOf(exData['equipment']);
-                              for (final e in muscleWeights.entries) {
-                                final v = rpe * fRpe * exerciseFactor * eqFactor * blockF * e.value;
-                                acc[e.key] = (acc[e.key] ?? 0) + v;
-                                circuitAccLoc[e.key] = (circuitAccLoc[e.key] ?? 0) + v;
-                                totalAcc[e.key] = (totalAcc[e.key] ?? 0) + v;
-                              }
-                            }
-
-                            return _exerciseItem(
-                              name: ex['exercise'],
-                              rpe: rpe,
-                              details: '${ex['reps'] ?? ex['seconds'] ?? '-'} ${ex['reps'] != null ? 'REPS' : 'S'} · ${ex['weight']?.toStringAsFixed(1) ?? '0'} KG',
-                              color: _kCircuitoColor,
-                              muscleAcc: acc,
-                            );
-                          }),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                );
-              }).toList(),
-            );
-          }
-
-          final exercises = byBlock[blockType];
-          if (exercises == null) return const SizedBox();
-
-          return _blockLayout(
-            blockType.toUpperCase(),
-            _sourceColor(blockType),
-            Column(
-              children: exercises.entries.map((entry) {
-                final exName = entry.key;
-                final groupSets = entry.value;
-                final exData = exercisesMap[exName];
-                final exerciseFactor = exerciseTypeFactorOf(exData?['exerciseType']);
-                final blockF = _structureFactor(groupSets.first);
-
-                final Map<Muscle, double> acc = {};
-                final eqFactor = equipmentFactorOf(exData?['equipment']);
-                for (final s in groupSets) {
-                  final vFactor = s.weight != null ? (s.perSide ? 2.0 : 1.0) : 1.0;
-                  for (final e in s.muscleWeights.entries) {
-                    final v = s.sets * s.rpe * exerciseFactor * eqFactor * rpeFactor(s.rpe) * blockF * vFactor * e.value;
-                    acc[e.key] = (acc[e.key] ?? 0) + v;
-                    totalAcc[e.key] = (totalAcc[e.key] ?? 0) + v;
-                  }
-                }
-
-                return _exerciseItem(
-                  name: exName,
-                  rpe: groupSets.first.rpe,
-                  details: '${groupSets.length} SERIES REALIZADAS',
-                  color: _sourceColor(blockType),
-                  muscleAcc: acc,
-                );
-              }).toList(),
-            ),
-          );
-        }),
-
+        ...blocks,
         if (totalAcc.isNotEmpty) _totalRecap(totalAcc),
       ],
     );
@@ -923,7 +1245,7 @@ class _MyWorkoutDetailsScreenState extends State<MyWorkoutDetailsScreen>
     );
   }
 
-  Widget _exerciseItem({required String name, required double rpe, required String details, required Color color, required Map<Muscle, double> muscleAcc}) {
+  Widget _exerciseItem({required String name, required double rpe, required Widget detailsWidget, required Color color, required Map<Muscle, double> muscleAcc}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Column(
@@ -938,12 +1260,12 @@ class _MyWorkoutDetailsScreenState extends State<MyWorkoutDetailsScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
-                child: Text('RPE $rpe', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, color: color)),
+                child: Text('RPE ${rpe.toStringAsFixed(1)}', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, color: color)),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          Text(details.toUpperCase(), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _kTextSecondary, letterSpacing: 0.8)),
+          detailsWidget,
           const SizedBox(height: 12),
           _muscleChips(muscleAcc),
         ],
@@ -952,12 +1274,41 @@ class _MyWorkoutDetailsScreenState extends State<MyWorkoutDetailsScreen>
   }
 
   Widget _muscleChips(Map<Muscle, double> acc) {
-    final sorted = acc.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: sorted.take(5).map((e) {
-        return Container(
+    // Solo mostrar músculos con impacto razonablemente mayor a 0 para no saturar.
+    final sorted = acc.entries.where((e) => e.value >= 0.1).toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+      
+    // Si la fatiga residual es muy pequeña y fue filtrada, igual la mostramos sumada como 'OTROS'
+    final double totalFiltered = acc.entries.where((e) => e.value < 0.1).fold(0, (sum, e) => sum + e.value);
+
+    final List<Widget> chips = sorted.map((e) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: _kSurface2,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _kDivider),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              e.key.label.toUpperCase(),
+              style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: _kTextSecondary),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              '+${e.value.toStringAsFixed(1)}',
+              style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: _kAccent),
+            ),
+          ],
+        ),
+      );
+    }).toList();
+
+    if (totalFiltered >= 0.1) {
+      chips.add(
+        Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
             color: _kSurface2,
@@ -967,19 +1318,25 @@ class _MyWorkoutDetailsScreenState extends State<MyWorkoutDetailsScreen>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                e.key.label.toUpperCase(),
-                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: _kTextSecondary),
+              const Text(
+                'OTROS',
+                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: _kTextSecondary),
               ),
               const SizedBox(width: 4),
               Text(
-                '+${e.value.toStringAsFixed(1)}',
+                '+${totalFiltered.toStringAsFixed(1)}',
                 style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: _kAccent),
               ),
             ],
           ),
-        );
-      }).toList(),
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: chips,
     );
   }
 

@@ -34,11 +34,20 @@ dev_dependencies:
     sdk: flutter
 
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/logo/logo.png"
+  adaptive_icon_background: "#121212"
+  adaptive_icon_foreground: "assets/logo/logo.png"
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/logo/
     - assets/svg/body_front.svg
     - assets/svg/body_back.svg
     - assets/sounds/work.wav

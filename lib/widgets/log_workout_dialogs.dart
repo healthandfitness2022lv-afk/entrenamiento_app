@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../screens/add_workout_screen.dart';
 
 class LogWorkoutDialogs {
@@ -145,35 +146,79 @@ class LogWorkoutDialogs {
     );
   }
 
+  /// Shows a bottom sheet with two tabs:
+  /// 1) Create a new block (by type)
+  /// 2) Pick from the saved 'blocks' collection
   static void showAddBlockOptions({
     required BuildContext context,
     required Function(Map<String, dynamic>) onBlockAdded,
   }) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) {
-        return Padding(
-          padding: const EdgeInsets.all(16),
+      builder: (_) => DefaultTabController(
+        length: 2,
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height * 0.65,
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                "Agregar bloque",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              // Handle
+              const SizedBox(height: 10),
+              Center(
+                child: Container(
+                  width: 40, height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade400,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
               ),
-              const SizedBox(height: 16),
-              _addBlockTile(context, "Series", Icons.repeat, onBlockAdded),
-              _addBlockTile(context, "Circuito", Icons.loop, onBlockAdded),
-              _addBlockTile(context, "Tabata", Icons.timer, onBlockAdded),
-              _addBlockTile(context, "Series descendentes", Icons.trending_down, onBlockAdded),
-              _addBlockTile(context, "Buscar RM", Icons.track_changes, onBlockAdded),
+              const SizedBox(height: 8),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    "Agregar bloque",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const TabBar(
+                tabs: [
+                  Tab(icon: Icon(Icons.add_circle_outline), text: "Nuevo"),
+                  Tab(icon: Icon(Icons.library_books_outlined), text: "Guardados"),
+                ],
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    // ---- TAB 1: Crear nuevo bloque ----
+                    ListView(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      children: [
+                        _addBlockTile(context, "Series", Icons.repeat, onBlockAdded),
+                        _addBlockTile(context, "Circuito", Icons.loop, onBlockAdded),
+                        _addBlockTile(context, "Tabata", Icons.timer, onBlockAdded),
+                        _addBlockTile(context, "EMOM", Icons.av_timer, onBlockAdded),
+                        _addBlockTile(context, "Series descendentes", Icons.trending_down, onBlockAdded),
+                        _addBlockTile(context, "Buscar RM", Icons.track_changes, onBlockAdded),
+                      ],
+                    ),
+
+                    // ---- TAB 2: Bloques guardados ----
+                    _SavedBlocksList(onBlockAdded: onBlockAdded),
+                  ],
+                ),
+              ),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -322,7 +367,7 @@ class LogWorkoutDialogs {
                           const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             child: Text(
-                              "Mis rutinas asignadas",
+                              "Mis bloques",
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -363,6 +408,95 @@ class LogWorkoutDialogs {
                 ],
               ),
             );
+          },
+        );
+      },
+    );
+  }
+}
+
+// ====================================================
+// Widget interno: lista de bloques guardados en Firestore
+// ====================================================
+class _SavedBlocksList extends StatefulWidget {
+  final Function(Map<String, dynamic>) onBlockAdded;
+  const _SavedBlocksList({required this.onBlockAdded});
+
+  @override
+  State<_SavedBlocksList> createState() => _SavedBlocksListState();
+}
+
+class _SavedBlocksListState extends State<_SavedBlocksList> {
+  List<Map<String, dynamic>> _blocks = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final snap = await FirebaseFirestore.instance
+        .collection('blocks')
+        .orderBy('createdAt', descending: true)
+        .get();
+
+    if (mounted) {
+      setState(() {
+        _blocks = snap.docs.map((d) => {...d.data(), 'id': d.id}).toList();
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_blocks.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            "No tienes bloques guardados.\nCrea uno en la sección Bloques.",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: _blocks.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (ctx, i) {
+        final b = _blocks[i];
+        final title = (b['title'] ?? '').toString().trim();
+        final type = (b['type'] ?? 'Bloque').toString();
+        final exCount = (b['exercises'] as List?)?.length ?? 0;
+
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Colors.tealAccent.withOpacity(0.15),
+            child: const Icon(Icons.fitness_center, color: Colors.tealAccent, size: 20),
+          ),
+          title: Text(title.isNotEmpty ? title : type),
+          subtitle: Text("$type  •  $exCount ejercicios"),
+          trailing: const Icon(Icons.add_circle, color: Colors.tealAccent),
+          onTap: () {
+            Navigator.pop(ctx); // cerrar sheet
+            // Pasar una copia del bloque (sin el id de Firestore)
+            final blockCopy = Map<String, dynamic>.from(b)
+              ..remove('id')
+              ..remove('createdAt')
+              ..remove('updatedAt')
+              ..remove('sourceRoutineId')
+              ..remove('sourceRoutineName');
+            widget.onBlockAdded(blockCopy);
           },
         );
       },

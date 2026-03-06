@@ -87,7 +87,7 @@ double _parseDouble(dynamic v) {
     );
   }
 
-Widget _performedWorkoutView(List<Map<String, dynamic>> performed) {
+Widget _performedWorkoutView(List<Map<String, dynamic>> performed, List<ProgressAlert> alerts, List<Achievement> sessionVitrina) {
   final List<Widget> children = [];
 
   for (final p in performed) {
@@ -121,17 +121,44 @@ Widget _performedWorkoutView(List<Map<String, dynamic>> performed) {
     );
 
     if (type == 'Circuito') {
-      children.add(_circuitBlockView(p));
+      children.add(_circuitBlockView(p, alerts));
     } else if (type == 'Tabata') {
       children.add(_tabataBlockView(p));
     } else if (type == 'Series descendentes') {
-      children.add(_descendingSeriesBlockView(p));
+      children.add(_descendingSeriesBlockView(p, alerts));
     } else if (type == 'Series' || type == 'Buscar RM') {
       final List exs = p['exercises'] ?? [];
       for (final ex in exs) {
-        children.add(_seriesExerciseRow(Map<String, dynamic>.from(ex), type));
+        children.add(_seriesExerciseRow(Map<String, dynamic>.from(ex), type, alerts));
       }
     }
+  }
+
+  // General achievements (that do not specify a single exercise, like 'bestWeekEver' or Vitrina achievements)
+  final generalAlerts = alerts.where((a) => a.evidence['exercise'] == null).toList();
+  if (generalAlerts.isNotEmpty || sessionVitrina.isNotEmpty) {
+    children.add(
+      Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: Colors.amber.withOpacity(0.08), borderRadius: BorderRadius.circular(8)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('🏆 LOGROS GENERALES DE LA SESIÓN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber)),
+            const SizedBox(height: 6),
+            ...sessionVitrina.map((a) => Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text('• Desbloqueaste: ${a.title}', style: const TextStyle(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.bold)),
+            )),
+            ...generalAlerts.map((a) => Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Text('• ${a.title}${a.explanation.isNotEmpty ? ' - ${a.explanation}' : ''}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            )),
+          ],
+        ),
+      )
+    );
   }
 
   return Column(
@@ -140,7 +167,7 @@ Widget _performedWorkoutView(List<Map<String, dynamic>> performed) {
   );
 }
 
-Widget _descendingSeriesBlockView(Map<String, dynamic> p) {
+Widget _descendingSeriesBlockView(Map<String, dynamic> p, List<ProgressAlert> alerts) {
   final List exs = p['exercises'] ?? [];
   if (exs.isEmpty) return const SizedBox();
 
@@ -198,12 +225,31 @@ Widget _descendingSeriesBlockView(Map<String, dynamic> p) {
                   final bool perSide = exPerSide || sPerSide;
                   final sideLabel = perSide ? " · por lado" : "";
 
-                  return Text(
-                    "• $name$sideLabel · $weight kg · RPE $rpe",
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey,
-                    ),
+                  final exAlerts = alerts.where((a) => a.evidence['exercise'] == name).toList();
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "• $name$sideLabel · $weight kg · RPE $rpe",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      if (exAlerts.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 10, top: 2, bottom: 2),
+                          child: Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            children: exAlerts.map((a) => Text(
+                              '🔥 ${a.title}${a.explanation.isNotEmpty ? ': ${a.explanation}' : ''}',
+                              style: const TextStyle(fontSize: 10, color: Colors.amber, fontWeight: FontWeight.bold),
+                            )).toList(),
+                          ),
+                        ),
+                    ],
                   );
                 }),
               ],
@@ -215,7 +261,7 @@ Widget _descendingSeriesBlockView(Map<String, dynamic> p) {
   );
 }
 
-Widget _seriesExerciseRow(Map<String, dynamic> p, String blockType) {
+Widget _seriesExerciseRow(Map<String, dynamic> p, String blockType, List<ProgressAlert> alerts) {
   final String name = p['exercise'];
   final List sets = p['sets'] ?? [];
 
@@ -244,8 +290,10 @@ Widget _seriesExerciseRow(Map<String, dynamic> p, String blockType) {
       headerText = "$name (RM)$sideLabel · ${totalWeight.toStringAsFixed(0)} kg";
   }
 
+  final exAlerts = alerts.where((a) => a.evidence['exercise'] == name).toList();
+
   return Padding(
-    padding: const EdgeInsets.only(bottom: 6),
+    padding: const EdgeInsets.only(bottom: 8),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -256,27 +304,66 @@ Widget _seriesExerciseRow(Map<String, dynamic> p, String blockType) {
             fontWeight: FontWeight.w600,
           ),
         ),
+        if (exAlerts.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 2),
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: exAlerts.map((a) => Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.emoji_events, size: 12, color: Colors.amber),
+                  const SizedBox(width: 4),
+                  Flexible(child: Text('${a.title}${a.explanation.isNotEmpty ? ': ${a.explanation}' : ''}', style: const TextStyle(fontSize: 11, color: Colors.amber, fontWeight: FontWeight.bold))),
+                ],
+              )).toList(),
+            ),
+          ),
         const SizedBox(height: 2),
         ...List.generate(sets.length, (i) {
           final s = sets[i];
-          if (blockType == 'Series descendentes') {
-            return Text(
-              "• Escalón ${i + 1}: ${s['reps']} reps · ${s['weight'] ?? 0} kg · RPE ${s['rpe']}",
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            );
-          } else if (blockType == 'Buscar RM') {
-            return Text(
-              "• Intento ${i + 1}: ${s['reps']} reps · ${s['weight'] ?? 0} kg · RPE ${s['rpe']}",
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            );
+          final repCount = _parseInt(s['reps']);
+          final wCount = _parseDouble(s['weight']);
+          
+          bool isRecordSet = false;
+          for (final a in exAlerts) {
+             if (a.type == ProgressAlertType.newPR) {
+                final currentSet = a.evidence['currentSet'];
+                if (currentSet != null) {
+                   if (currentSet['reps'] == repCount && currentSet['weight'] == wCount) {
+                       isRecordSet = true;
+                   }
+                }
+             }
           }
-          return Text(
-            "• ${i + 1}: ${s['reps']} reps · ${s['weight'] ?? 0} kg · RPE ${s['rpe']}",
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.grey,
-            ),
+
+          final textStyle = TextStyle(
+            fontSize: 12,
+            color: isRecordSet ? Colors.amber : Colors.grey,
+            fontWeight: isRecordSet ? FontWeight.bold : FontWeight.normal,
           );
+
+          String lineText = "";
+          if (blockType == 'Series descendentes') {
+            lineText = "• Escalón ${i + 1}: ${s['reps']} reps · ${s['weight'] ?? 0} kg · RPE ${s['rpe']}";
+          } else if (blockType == 'Buscar RM') {
+            lineText = "• Intento ${i + 1}: ${s['reps']} reps · ${s['weight'] ?? 0} kg · RPE ${s['rpe']}";
+          } else {
+            lineText = "• ${i + 1}: ${s['reps']} reps · ${s['weight'] ?? 0} kg · RPE ${s['rpe']}";
+          }
+
+          if (isRecordSet) {
+             return Row(
+               children: [
+                 Text(lineText, style: textStyle),
+                 const SizedBox(width: 4),
+                 const Icon(Icons.star, size: 12, color: Colors.amber),
+               ],
+             );
+          }
+
+          return Text(lineText, style: textStyle);
         }),
       ],
     ),
@@ -285,7 +372,7 @@ Widget _seriesExerciseRow(Map<String, dynamic> p, String blockType) {
 
 
 
-Widget _circuitBlockView(Map<String, dynamic> p) {
+Widget _circuitBlockView(Map<String, dynamic> p, List<ProgressAlert> alerts) {
   final List rounds = p['rounds'] ?? [];
 
   return Padding(
@@ -301,7 +388,7 @@ Widget _circuitBlockView(Map<String, dynamic> p) {
 
   for (final e in exs) {
     final int reps = _parseInt(e['reps']);
-final double weight = _parseDouble(e['weight']);
+    final double weight = _parseDouble(e['weight']);
 
 
     final bool perSide = e['perSide'] == true;
@@ -325,15 +412,35 @@ final double weight = _parseDouble(e['weight']);
           ),
         ),
         ...exs.map((e) {
+          final String name = e['exercise'] ?? '';
           final bool perSide = e['perSide'] == true;
           final String sideText = perSide ? " · por lado" : "";
 
-          return Text(
-            "• ${e['exercise']}$sideText · ${e['reps']} reps · ${e['weight'] ?? 0} kg · RPE ${e['rpe']}",
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.grey,
-            ),
+          final exAlerts = alerts.where((a) => a.evidence['exercise'] == name).toList();
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "• $name$sideText · ${e['reps']} reps · ${e['weight'] ?? 0} kg · RPE ${e['rpe']}",
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                ),
+              ),
+              if (exAlerts.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(left: 10, top: 2, bottom: 2),
+                  child: Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: exAlerts.map((a) => Text(
+                      '🔥 ${a.title}${a.explanation.isNotEmpty ? ': ${a.explanation}' : ''}',
+                      style: const TextStyle(fontSize: 10, color: Colors.amber, fontWeight: FontWeight.bold),
+                    )).toList(),
+                  ),
+                ),
+            ],
           );
         }),
       ],
@@ -373,8 +480,7 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
   for (final d in docs) {
     final data = d.data() as Map<String, dynamic>;
 
-    final String? routineId = data['routineId'];
-    if (routineId == null) continue;
+    final String sessionKey = data['sessionName'] ?? data['routineName'] ?? 'Entrenamiento';
 
     final DateTime date =
         (data['date'] as Timestamp).toDate();
@@ -387,10 +493,8 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
 
     final double avgRpe =
         calculateAverageWorkoutRPE(performed);
-    
 
-
-    grouped.putIfAbsent(routineId, () => []).add(
+    grouped.putIfAbsent(sessionKey, () => []).add(
       RoutineSessionSummary(
         date: date,
         volume: volume,
@@ -399,7 +503,7 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
     );
   }
 
-  // 🔥 Ordenar cada rutina por fecha
+  // 🔥 Ordenar cada sesión por fecha
   for (final list in grouped.values) {
     list.sort((a, b) => a.date.compareTo(b.date));
   }
@@ -557,7 +661,7 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
           ),
         ),
         title: Text(
-          data['routineName'] ?? 'Entrenamiento',
+          data['sessionName'] ?? data['routineName'] ?? 'Entrenamiento',
           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
         ),
         subtitle: Column(
@@ -573,7 +677,17 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
-                children: badgeWidgets,
+                children: badgeWidgets.take(4).toList()..addAll(
+                  badgeWidgets.length > 4 
+                    ? [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(color: Colors.grey.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+                          child: Text('+${badgeWidgets.length - 4}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
+                        )
+                      ]
+                    : []
+                ),
               ),
             ]
           ],
@@ -618,72 +732,45 @@ Map<String, List<RoutineSessionSummary>> _groupByRoutine(
       ),
   ],
 ),
-
-
     const SizedBox(width: 6),
-
     IconButton(
-  icon: const Icon(Icons.edit, size: 20),
-  tooltip: "Editar entrenamiento",
-  onPressed: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => LogWorkoutScreen(
-          existingWorkout: {
-  'id': d.id,
-  ...d.data() as Map<String, dynamic>,
-},
-          workoutRef: d.reference,
-        ),
-      ),
-    );
-  },
-),
-
+      icon: const Icon(Icons.edit, size: 20),
+      tooltip: "Editar entrenamiento",
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LogWorkoutScreen(
+              existingWorkout: {
+                'id': d.id,
+                ...d.data() as Map<String, dynamic>,
+              },
+              workoutRef: d.reference,
+            ),
+          ),
+        );
+      },
+    ),
   ],
 ),
-
         children: [
           const Divider(height: 1),
           Padding(
-  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-  child: _performedWorkoutView(performed),
-),
-
-
-
-Builder(
-  builder: (_) {
-    final allByRoutine =
-        _groupByRoutine(filtered);
-
-    final routineId = data['routineId'];
-    final sessions = routineId != null
-        ? allByRoutine[routineId]
-        : null;
-
-    if (sessions == null || !_hasProgress(sessions)) {
-      return const SizedBox();
-    }
-
-    return const SizedBox();
-  },
-),
-
-TextButton.icon(
-  icon: const Icon(Icons.open_in_new),
-  label: const Text("Ver detalle completo"),
-  onPressed: () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MyWorkoutDetailsScreen(workout: d),
-      ),
-    );
-  },
-),
-
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: _performedWorkoutView(performed, alerts, sessionVitrina),
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.open_in_new),
+            label: const Text("Ver detalle completo"),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MyWorkoutDetailsScreen(workout: d),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );

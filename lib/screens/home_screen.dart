@@ -4,8 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'progress_screen.dart';
 import 'exercises_screen.dart';
-import 'routines_screen.dart';
-import 'assign_routine_screen.dart';
+import 'blocks_screen.dart';
 import 'log_workout_screen.dart';
 import 'planning_screen.dart';
 import 'my_workouts_screen.dart';
@@ -386,7 +385,7 @@ class _HomeScreenState extends State<HomeScreen>
                                             },
                                           ),
                                           _ActionIcon(
-                                            title: "Planes",
+                                            title: "Planificación",
                                             icon: Icons.calendar_month_rounded,
                                             onTap: () {
                                               Navigator.push(
@@ -399,33 +398,19 @@ class _HomeScreenState extends State<HomeScreen>
                                             },
                                           ),
                                           _ActionIcon(
-                                            title: "Rutinas",
+                                            title: "Bloques",
                                             icon: Icons.view_list_rounded,
                                             onTap: () {
                                               Navigator.push(
                                                 context,
                                                 MaterialPageRoute(
                                                   builder: (_) =>
-                                                      const RoutinesScreen(),
+                                                      const BlocksScreen(),
                                                 ),
                                               );
                                             },
                                           ),
-                                          if (role == 'administrador')
-                                            _ActionIcon(
-                                              title: "Asignar",
-                                              icon:
-                                                  Icons.assignment_ind_rounded,
-                                              onTap: () {
-                                                Navigator.push(
-                                                  context,
-                                                  MaterialPageRoute(
-                                                    builder: (_) =>
-                                                        const AssignRoutineScreen(),
-                                                  ),
-                                                );
-                                              },
-                                            ),
+
                                         ],
                                       ),
                                     ),

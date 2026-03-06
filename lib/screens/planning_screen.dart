@@ -104,9 +104,9 @@ class _PlanningScreenState extends State<PlanningScreen> {
   String? selectedAthleteName;
 
   List<Map<String, dynamic>> _plannedWorkouts = [];
-  List<Map<String, dynamic>> _athleteRoutines = [];
+  List<Map<String, dynamic>> _availableBlocks = [];
   String? _expandedWorkoutId;
-final Map<String, DocumentSnapshot> _routineCache = {};
+final Map<String, DocumentSnapshot> _blockCache = {};
 
 
   bool _loading = true;
@@ -140,7 +140,7 @@ final Map<String, DocumentSnapshot> _routineCache = {};
     }
 
     if (selectedAthleteId != null) {
-      await _loadRoutines();
+      await _loadAvailableBlocks();
       await _loadPlannedForDay(_selectedDay!);
     }
 
@@ -196,30 +196,15 @@ final Map<String, DocumentSnapshot> _routineCache = {};
 
 
   // ====================================================
-  // LOAD ROUTINES FROM routine_assignments
+  // LOAD AVAILABLE BLOCKS
   // ====================================================
-  Future<void> _loadRoutines() async {
-    final assignmentSnapshot = await FirebaseFirestore.instance
-        .collection('routine_assignments')
-        .where('athleteId', isEqualTo: selectedAthleteId)
-        .where('status', isEqualTo: 'active')
+  Future<void> _loadAvailableBlocks() async {
+    final blocksSnapshot = await FirebaseFirestore.instance
+        .collection('blocks')
+        .orderBy('createdAt', descending: true)
         .get();
 
-    final routineIds = assignmentSnapshot.docs
-        .map((doc) => doc['routineId'] as String)
-        .toList();
-
-    if (routineIds.isEmpty) {
-      _athleteRoutines = [];
-      return;
-    }
-
-    final routinesSnapshot = await FirebaseFirestore.instance
-        .collection('routines')
-        .where(FieldPath.documentId, whereIn: routineIds)
-        .get();
-
-    _athleteRoutines = routinesSnapshot.docs
+    _availableBlocks = blocksSnapshot.docs
         .map((d) => {...d.data(), 'id': d.id})
         .toList();
   }
@@ -270,32 +255,37 @@ Future<Map<String, double>> calculateWeeklyMuscleLoad() async {
   Map<String, double> weeklyLoad = {};
 
   for (final w in workouts.docs) {
-    final routineId = w['routineId'];
+    if (w.data().containsKey('blockId')) {
+      final blockId = w['blockId'];
 
-    final routineDoc = await FirebaseFirestore.instance
-        .collection('routines')
-        .doc(routineId)
-        .get();
-
-    final exercises = routineDoc.data()?['exercises'] ?? [];
-
-    for (final ex in exercises) {
-      final exerciseId = ex['exerciseId'];
-      final sets = ex['sets'] ?? 0;
-
-      final exerciseDoc = await FirebaseFirestore.instance
-          .collection('exercises')
-          .doc(exerciseId)
+      final blockDoc = await FirebaseFirestore.instance
+          .collection('blocks')
+          .doc(blockId)
           .get();
 
-      final weights =
-          Map<String, dynamic>.from(exerciseDoc.data()?['muscleWeights'] ?? {});
+      final exercises = blockDoc.data()?['exercises'] ?? [];
 
-      weights.forEach((muscle, value) {
-        weeklyLoad[muscle] =
-            (weeklyLoad[muscle] ?? 0) +
-                (sets * (value as num).toDouble());
-      });
+      for (final ex in exercises) {
+        final exerciseName = ex['name'];
+        final sets = ex['series'] ?? 0;
+
+        final exerciseSnapshot = await FirebaseFirestore.instance
+            .collection('exercises')
+            .where('name', isEqualTo: exerciseName)
+            .limit(1)
+            .get();
+
+        if (exerciseSnapshot.docs.isNotEmpty) {
+          final weights =
+              Map<String, dynamic>.from(exerciseSnapshot.docs.first.data()['muscleWeights'] ?? {});
+
+          weights.forEach((muscle, value) {
+            weeklyLoad[muscle] =
+                (weeklyLoad[muscle] ?? 0) +
+                    (sets * (value as num).toDouble());
+          });
+        }
+      }
     }
   }
 
@@ -305,60 +295,113 @@ Future<Map<String, double>> calculateWeeklyMuscleLoad() async {
 
 
   // ====================================================
-  // CREATE PLANNED WORKOUT FROM ROUTINE
+  // CREATE PLANNED WORKOUT FROM BLOCKS (multi-select)
   // ====================================================
   Future<void> _createPlannedWorkout() async {
-    if (_athleteRoutines.isEmpty) return;
+    if (_availableBlocks.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No hay bloques creados aún")),
+        );
+      }
+      return;
+    }
 
-    String? selectedRoutineId;
+    // Ids de bloques seleccionados
+    final Set<String> selected = {};
 
     await showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Seleccionar rutina"),
-        content: SizedBox(
-          width: 300,
-          height: 300,
-          child: ListView.builder(
-            itemCount: _athleteRoutines.length,
-            itemBuilder: (context, index) {
-              final r = _athleteRoutines[index];
-              return ListTile(
-                title: Text(r['name']),
-                onTap: () {
-                  selectedRoutineId = r['id'];
-                  Navigator.pop(context);
-                },
-              );
-            },
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text("Seleccionar bloques"),
+          content: SizedBox(
+            width: 320,
+            height: 420,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "${selected.length} seleccionado(s)",
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _availableBlocks.length,
+                    itemBuilder: (context, index) {
+                      final b = _availableBlocks[index];
+                      final id = b['id'] as String;
+                      final title = (b['title'] ?? '').toString().trim();
+                      final type = (b['type'] ?? 'Bloque').toString();
+                      final isSelected = selected.contains(id);
+
+                      return CheckboxListTile(
+                        value: isSelected,
+                        onChanged: (val) {
+                          setDialog(() {
+                            if (val == true) {
+                              selected.add(id);
+                            } else {
+                              selected.remove(id);
+                            }
+                          });
+                        },
+                        title: Text(title.isNotEmpty ? title : type),
+                        subtitle: Text(type),
+                        dense: true,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Cancelar"),
+            ),
+            ElevatedButton(
+              onPressed: selected.isEmpty ? null : () => Navigator.pop(ctx),
+              child: Text("Agregar ${selected.length} bloque${selected.length == 1 ? '' : 's'}"),
+            ),
+          ],
         ),
       ),
     );
 
-    if (selectedRoutineId == null) return;
-
-    final routine = _athleteRoutines
-        .firstWhere((r) => r['id'] == selectedRoutineId);
+    if (selected.isEmpty) return;
 
     final normalized = DateTime(
-  _selectedDay!.year,
-  _selectedDay!.month,
-  _selectedDay!.day,
-);
+      _selectedDay!.year,
+      _selectedDay!.month,
+      _selectedDay!.day,
+    );
 
-    await FirebaseFirestore.instance
-        .collection('planned_workouts')
-        .add({
-      'athleteId': selectedAthleteId,
-      'athleteName': selectedAthleteName,
-      'routineId': selectedRoutineId,
-      'routineTitle': routine['name'],
-      'date': Timestamp.fromDate(normalized),
-      'status': 'planned',
-      'createdAt': Timestamp.now(),
-    });
+    // Guardar cada bloque seleccionado como planned_workout independiente
+    final batch = FirebaseFirestore.instance.batch();
+    final col = FirebaseFirestore.instance.collection('planned_workouts');
 
+    for (final blockId in selected) {
+      final block = _availableBlocks.firstWhere((b) => b['id'] == blockId);
+      final title = (block['title'] ?? '').toString().trim();
+      final type = (block['type'] ?? 'Bloque').toString();
+      final blockTitle = title.isNotEmpty ? title : type;
+
+      batch.set(col.doc(), {
+        'athleteId': selectedAthleteId,
+        'athleteName': selectedAthleteName,
+        'blockId': blockId,
+        'blockTitle': blockTitle,
+        'date': Timestamp.fromDate(normalized),
+        'status': 'planned',
+        'createdAt': Timestamp.now(),
+      });
+    }
+
+    await batch.commit();
     _loadPlannedForDay(_selectedDay!);
   }
 
@@ -427,8 +470,8 @@ Future<void> _reviewWeekDetailedByDay() async {
 
     final plannedDocs = plannedSnap.docs.map((d) => d.data()).toList();
 
-    // Cache rutinas
-    final Map<String, Map<String, dynamic>> routineCache = {};
+    // Cache blocks
+    final Map<String, Map<String, dynamic>> blockCacheFull = {};
 
     // plannedByDay[YYYY-MM-DD] = [items...]
     final Map<String, List<_DayPlannedItem>> plannedByDay = {};
@@ -440,47 +483,40 @@ Future<void> _reviewWeekDetailedByDay() async {
       return "$type • Bloque ${idx + 1}$t";
     }
 
-    // Extrae ejercicios planificados desde la rutina (y trae bloque)
-    List<_DayPlannedItem> extractPlannedItemsFromRoutine(
-      Map<String, dynamic> routine,
+    // Extrae ejercicios planificados desde el bloque (ya no es rutina)
+    List<_DayPlannedItem> extractPlannedItemsFromBlock(
+      Map<String, dynamic> block,
     ) {
       final out = <_DayPlannedItem>[];
+      final type = (block['type'] ?? '').toString();
+      final title = (block['title'] ?? block['name'] ?? '').toString().trim();
+      final label = title.isNotEmpty ? "$type • $title" : type;
 
-      final blocks = (routine['blocks'] is List) ? List.from(routine['blocks']) : const [];
-      for (int i = 0; i < blocks.length; i++) {
-        final bRaw = blocks[i];
-        if (bRaw is! Map) continue;
+      // SERIES: cada ejercicio tiene 'name' y 'series' (=sets)
+      if (type == 'Series' || type == 'Series descendentes' || type == 'Buscar RM') {
+        final exs = (block['exercises'] is List) ? List.from(block['exercises']) : const [];
+        for (final exRaw in exs) {
+          if (exRaw is! Map) continue;
+          final ex = Map<String, dynamic>.from(exRaw);
+          final name = normalizeExerciseName(ex['name']);
+          final sets = (ex['series'] is num) ? (ex['series'] as num).toDouble() : 0.0;
+          if (name.isEmpty || sets <= 0) continue;
 
-        final block = Map<String, dynamic>.from(bRaw);
-        final type = (block['type'] ?? '').toString();
-        final label = blockLabel(i, block);
-
-        // SERIES: cada ejercicio tiene 'name' y 'series' (=sets)
-        if (type == 'Series' || type == 'Series descendentes' || type == 'Buscar RM') {
-          final exs = (block['exercises'] is List) ? List.from(block['exercises']) : const [];
-          for (final exRaw in exs) {
-            if (exRaw is! Map) continue;
-            final ex = Map<String, dynamic>.from(exRaw);
-            final name = normalizeExerciseName(ex['name']);
-            final sets = (ex['series'] is num) ? (ex['series'] as num).toDouble() : 0.0;
-            if (name.isEmpty || sets <= 0) continue;
-
-            final key = "name:${_norm(name)}";
-            out.add(_DayPlannedItem(
-              key: key,
-              name: name,
-              blockLabel: label,
-              plannedVol: sets,
-            ));
-          }
+          final key = "name:${_norm(name)}";
+          out.add(_DayPlannedItem(
+            key: key,
+            name: name,
+            blockLabel: label,
+            plannedVol: sets,
+          ));
         }
+      }
 
-        // CIRCUITO: block['rounds'] y exercises con name
-        if (type == 'Circuito') {
-          final rounds = (block['rounds'] is num) ? (block['rounds'] as num).toDouble() : 0.0;
-          final exs = (block['exercises'] is List) ? List.from(block['exercises']) : const [];
-          if (rounds <= 0) continue;
-
+      // CIRCUITO: block['rounds'] y exercises con name
+      if (type == 'Circuito') {
+        final rounds = (block['rounds'] is num) ? (block['rounds'] as num).toDouble() : 0.0;
+        final exs = (block['exercises'] is List) ? List.from(block['exercises']) : const [];
+        if (rounds > 0) {
           for (final exRaw in exs) {
             if (exRaw is! Map) continue;
             final ex = Map<String, dynamic>.from(exRaw);
@@ -496,25 +532,25 @@ Future<void> _reviewWeekDetailedByDay() async {
             ));
           }
         }
+      }
 
-        // TABATA: block['rounds'] y exercises con name
-        if (type == 'Tabata') {
-          final rounds = (block['rounds'] is num) ? (block['rounds'] as num).toDouble() : 1.0;
-          final exs = (block['exercises'] is List) ? List.from(block['exercises']) : const [];
-          for (final exRaw in exs) {
-            if (exRaw is! Map) continue;
-            final ex = Map<String, dynamic>.from(exRaw);
-            final name = normalizeExerciseName(ex['name']);
-            if (name.isEmpty) continue;
+      // TABATA o EMOM: block['rounds'] y exercises con name
+      if (type == 'Tabata' || type == 'EMOM') {
+        final rounds = (block['rounds'] is num) ? (block['rounds'] as num).toDouble() : 1.0;
+        final exs = (block['exercises'] is List) ? List.from(block['exercises']) : const [];
+        for (final exRaw in exs) {
+          if (exRaw is! Map) continue;
+          final ex = Map<String, dynamic>.from(exRaw);
+          final name = normalizeExerciseName(ex['name']);
+          if (name.isEmpty) continue;
 
-            final key = "name:${_norm(name)}";
-            out.add(_DayPlannedItem(
-              key: key,
-              name: name,
-              blockLabel: label,
-              plannedVol: rounds, // si prefieres 1 por tabata, cambia rounds -> 1.0
-            ));
-          }
+          final key = "name:${_norm(name)}";
+          out.add(_DayPlannedItem(
+            key: key,
+            name: name,
+            blockLabel: label,
+            plannedVol: rounds,
+          ));
         }
       }
 
@@ -527,20 +563,21 @@ Future<void> _reviewWeekDetailedByDay() async {
       if (ts == null) continue;
       final day = _dayKey(ts.toDate());
 
-      final routineId = (p['routineId'] ?? '').toString();
-      if (routineId.isEmpty) continue;
+      // Try blockId first
+      final blockId = (p['blockId'] ?? '').toString();
+      if (blockId.isNotEmpty) {
+        Map<String, dynamic> block;
+        if (blockCacheFull.containsKey(blockId)) {
+          block = blockCacheFull[blockId]!;
+        } else {
+          final bDoc = await FirebaseFirestore.instance.collection('blocks').doc(blockId).get();
+          block = (bDoc.data() ?? {});
+          blockCacheFull[blockId] = block;
+        }
 
-      Map<String, dynamic> routine;
-      if (routineCache.containsKey(routineId)) {
-        routine = routineCache[routineId]!;
-      } else {
-        final rDoc = await FirebaseFirestore.instance.collection('routines').doc(routineId).get();
-        routine = (rDoc.data() ?? {});
-        routineCache[routineId] = routine;
+        final items = extractPlannedItemsFromBlock(block);
+        plannedByDay.putIfAbsent(day, () => []).addAll(items);
       }
-
-      final items = extractPlannedItemsFromRoutine(routine);
-      plannedByDay.putIfAbsent(day, () => []).addAll(items);
     }
 
     // =========================
@@ -1012,7 +1049,7 @@ Widget _buildExtrasList(
             _loading = true;
           });
 
-          await _loadRoutines();
+          await _loadAvailableBlocks();
           await _loadPlannedForDay(_selectedDay!);
 
           setState(() {
@@ -1107,23 +1144,25 @@ Text(
 
         const SizedBox(height: 16),
 
-        if (_plannedWorkouts.isEmpty) ...[
-          const Text(
-            "Este día no tiene entrenamiento planificado.",
-            style: TextStyle(fontSize: 15),
+        // Botón siempre visible (sin límite de bloques por día)
+        if (role == 'administrador') ...[  
+          ElevatedButton.icon(
+            onPressed: _createPlannedWorkout,
+            icon: const Icon(Icons.add),
+            label: const Text("Asignar bloques"),
           ),
           const SizedBox(height: 12),
-          if (role == 'administrador')
-  ElevatedButton.icon(
-    onPressed: _createPlannedWorkout,
-    icon: const Icon(Icons.add),
-    label: const Text("Asignar rutina"),
-  ),
+        ],
 
-        ] else ...[
+        if (_plannedWorkouts.isEmpty) ...[
           const Text(
-            "Rutinas asignadas:",
-            style: TextStyle(
+            "Este día no tiene bloques planificados.",
+            style: TextStyle(fontSize: 15),
+          ),
+        ] else ...[
+          Text(
+            "Bloques asignados (${_plannedWorkouts.length}):",
+            style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
             ),
@@ -1146,7 +1185,7 @@ Text(
           // =========================
           ListTile(
             title: Text(
-              w['routineTitle'] ?? '',
+              w['blockTitle'] ?? 'Bloque',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             trailing: Row(
@@ -1175,14 +1214,14 @@ Text(
                 return;
               }
 
-              // Cargar rutina si no está en cache
-              if (!_routineCache.containsKey(w['routineId'])) {
-                final routineDoc = await FirebaseFirestore.instance
-                    .collection('routines')
-                    .doc(w['routineId'])
+              // Cargar bloque si no está en cache
+              if (!_blockCache.containsKey(w['blockId'])) {
+                final blockDoc = await FirebaseFirestore.instance
+                    .collection('blocks')
+                    .doc(w['blockId'])
                     .get();
 
-                _routineCache[w['routineId']] = routineDoc;
+                _blockCache[w['blockId'] ?? ''] = blockDoc;
               }
 
               setState(() {
@@ -1194,12 +1233,15 @@ Text(
           // =========================
           // CONTENIDO EXPANDIDO
           // =========================
-          if (isExpanded)
+          if (isExpanded && w['blockId'] != null && _blockCache.containsKey(w['blockId']))
   Padding(
     padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
     child: RoutineView(
-      routine: _routineCache[w['routineId']]!.data() 
-          as Map<String, dynamic>,
+      routine: {
+        'blocks': [
+          _blockCache[w['blockId']]!.data() as Map<String, dynamic>
+        ]
+      },
       compact: true, // 👈 importante para Planning
     ),
   ),

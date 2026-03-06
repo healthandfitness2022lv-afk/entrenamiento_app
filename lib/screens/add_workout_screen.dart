@@ -23,8 +23,9 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   final descriptionCtrl = TextEditingController();
   final schemaCtrl = TextEditingController();
   final rmCtrl = TextEditingController();
+  String _folder = ""; // 👈 Ahora es interna, no se edita aquí
   List<QueryDocumentSnapshot> _allExercises = [];
-bool _loadedExercises = false;
+  bool _loadedExercises = false;
 
   // ===== Ejercicio =====
   // Multi-selection: tracks all exercises chosen before hitting "Agregar"
@@ -53,8 +54,13 @@ bool _loadedExercises = false;
   @override
   void initState() {
     super.initState();
-      _loadExercises();
+    _loadExercises();
 
+    titleController = TextEditingController(
+      text: widget.initialBlock?['title'] ?? '',
+    );
+    descriptionCtrl.text = widget.initialBlock?['description'] ?? '';
+    _folder = (widget.initialBlock?['folder'] ?? '').toString();
 
     final b = widget.initialBlock;
     if (b == null) return;
@@ -71,11 +77,6 @@ bool _loadedExercises = false;
     if (blockType == "Buscar RM") {
       rmCtrl.text = b["rm"]?.toString() ?? "5";
     }
-
-    titleController = TextEditingController(
-      text: widget.initialBlock?['title'] ?? '',
-    );
-    descriptionCtrl.text = widget.initialBlock?['description'] ?? '';
 
     final exercises = List<Map<String, dynamic>>.from(
       b["exercises"] ?? const [],
@@ -109,21 +110,15 @@ bool _loadedExercises = false;
   }
 
   Future<void> _loadExercises() async {
-  final snap = await FirebaseFirestore.instance
-      .collection("exercises")
-      .get();
+    // Ejercicios
+    final snap = await FirebaseFirestore.instance.collection("exercises").get();
+    _allExercises = snap.docs;
+    _allExercises.sort((a, b) => (a["name"] as String).compareTo(b["name"] as String));
 
-  _allExercises = snap.docs;
-
-  _allExercises.sort(
-    (a, b) => (a["name"] as String)
-        .compareTo(b["name"] as String),
-  );
-
-  setState(() {
-    _loadedExercises = true;
-  });
-}
+    setState(() {
+      _loadedExercises = true;
+    });
+  }
 
   // =====================================================
   // GUARDAR BLOQUE
@@ -138,7 +133,8 @@ bool _loadedExercises = false;
     final block = {
       "type": blockType,
       "title": titleController.text.trim(),
-      "description": descriptionCtrl.text.trim(), // 👈 NUEVO
+      "description": descriptionCtrl.text.trim(), 
+      "folder": _folder, 
       "exercises": List<Map<String, dynamic>>.from(currentExercises),
     };
 
@@ -874,7 +870,10 @@ Widget _exerciseSearchAndSelector({required StateSetter setSheetState}) {
           // 🔥 NOMBRE DEL BLOQUE
           TextField(
             controller: titleController,
-            decoration: const InputDecoration(labelText: "Nombre del bloque"),
+            decoration: const InputDecoration(
+              labelText: "Nombre del bloque",
+              prefixIcon: Icon(Icons.title),
+            ),
           ),
 
           const SizedBox(height: 12),
@@ -884,6 +883,7 @@ Widget _exerciseSearchAndSelector({required StateSetter setSheetState}) {
             controller: descriptionCtrl,
             decoration: const InputDecoration(
               labelText: "Descripción / Indicaciones",
+              prefixIcon: Icon(Icons.notes),
             ),
             maxLines: 3,
           ),

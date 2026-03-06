@@ -32,9 +32,7 @@ class _WeeklyLoadScreenState extends State<WeeklyLoadScreen>
 
   Map<DateTime, Map<String, double>> dailyLoads = {};
   Map<String, double> totalLoad = {};
-  Map<String, double> averageLoad = {};
   Map<String, double> exerciseTypeLoad = {};
-  bool _showAverage = false; // false = acumulado, true = promedio
   Map<DateTime, Map<String, List<Map<String, dynamic>>>> dailyDetails = {};
 
 
@@ -135,113 +133,123 @@ void _openMuscleDetail({
 
 Widget _buildMuscleTable() {
   if (dailyLoads.isEmpty) {
-    return const Text("Sin datos en el rango.");
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.analytics_outlined, size: 48, color: Colors.grey[400]),
+          const SizedBox(height: 12),
+          Text("Sin datos en el rango.", style: TextStyle(color: Colors.grey[600])),
+        ],
+      ),
+    );
   }
 
-  final dates = dailyLoads.keys.toList()
-    ..sort((a, b) => a.compareTo(b));
+  final dates = dailyLoads.keys.toList()..sort((a, b) => a.compareTo(b));
+  final muscles = totalLoad.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+  final muscleKeys = muscles.map((e) => e.key).toList();
 
-  final muscles = totalLoad.entries.toList()
-  ..sort((a, b) => b.value.compareTo(a.value));
-
-final muscleKeys = muscles.map((e) => e.key).toList();
-
-
-  return SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: SingleChildScrollView(
-      scrollDirection: Axis.vertical,
-      child: DataTable(
-        columnSpacing: 16,
-        headingRowHeight: 40,
-        dataRowHeight: 36,
-        columns: [
-          const DataColumn(
-            label: Text(
-              "Músculo",
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-
-          // 🔥 Columnas por día
-          ...dates.map(
-            (d) => DataColumn(
-              label: Text(
-                "${d.day}/${d.month}",
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-          ),
-
-          const DataColumn(
-            label: Text(
-              "Total",
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-        rows: muscleKeys.map((muscle) {
-
-          double rowTotal = 0;
-
-          final cells = <DataCell>[
-            DataCell(
-              Text(
-                _muscleLabel(muscle),
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-          ];
-
-          for (final d in dates) {
-            final value = dailyLoads[d]?[muscle] ?? 0;
-            rowTotal += value;
-
-            cells.add(
-  DataCell(
-    GestureDetector(
-      onTap: value > 0
-          ? () {
-              final exercises =
-                  dailyDetails[d]?[muscle] ?? [];
-
-              _openMuscleDetail(
-                date: d,
-                muscle: muscle,
-                exercises: exercises,
-              );
-            }
-          : null,
-      child: Text(
-        value > 0 ? value.toStringAsFixed(1) : "-",
-        style: TextStyle(
-          fontSize: 12,
-          color: value > 0
-              ? Theme.of(context).colorScheme.primary
-              : Colors.grey,
-          fontWeight:
-              value > 0 ? FontWeight.w600 : FontWeight.normal,
-        ),
-      ),
+  return Container(
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: const Color(0xFF2A2A2A)),
     ),
-  ),
-);
-
-          }
-
-          cells.add(
-            DataCell(
-              Text(
-                rowTotal.toStringAsFixed(1),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
+    clipBehavior: Clip.antiAlias,
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.vertical,
+        child: DataTable(
+          columnSpacing: 24,
+          horizontalMargin: 16,
+          headingRowHeight: 48,
+          dataRowHeight: 44,
+          headingTextStyle: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.onSurface,
+            fontSize: 13,
+          ),
+          columns: [
+            const DataColumn(label: Text("Músculo")),
+            ...dates.map(
+              (d) => DataColumn(
+                label: Text(
+                  "${d.day}/${d.month}",
+                  textAlign: TextAlign.center,
                 ),
               ),
             ),
-          );
+            const DataColumn(label: Text("Total")),
+          ],
+          rows: muscleKeys.map((muscle) {
+            double rowTotal = 0;
+            final cells = <DataCell>[
+              DataCell(
+                Text(
+                  _muscleLabel(muscle),
+                  style: TextStyle(
+                    fontSize: 12, 
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
+                  ),
+                ),
+              ),
+            ];
 
-          return DataRow(cells: cells);
-        }).toList(),
+            for (final d in dates) {
+              final value = dailyLoads[d]?[muscle] ?? 0;
+              rowTotal += value;
+
+              cells.add(
+                DataCell(
+                  GestureDetector(
+                    onTap: value > 0
+                        ? () {
+                            final exercises = dailyDetails[d]?[muscle] ?? [];
+                            _openMuscleDetail(
+                              date: d,
+                              muscle: muscle,
+                              exercises: exercises,
+                            );
+                          }
+                        : null,
+                    child: Container(
+                      width: 40,
+                      alignment: Alignment.center,
+                      child: Text(
+                        value > 0 ? value.toStringAsFixed(1) : "-",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: value > 0 ? Theme.of(context).primaryColor : Colors.grey[600],
+                          fontWeight: value > 0 ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            cells.add(
+              DataCell(
+                Container(
+                  alignment: Alignment.center,
+                  child: Text(
+                    rowTotal.toStringAsFixed(1),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color: Theme.of(context).primaryColor,
+                    ),
+                  ),
+                ),
+              ),
+            );
+
+            return DataRow(cells: cells);
+          }).toList(),
+        ),
       ),
     ),
   );
@@ -297,18 +305,12 @@ Map<AnatomicalGroup, double> _groupLoadsFrom(
   // CORE CALCULATION
   // ==========================================================
   Future<void> _calculateLoad() async {
-    
     exerciseTypeLoad.clear();
     if (selectedRange == null) return;
 
-
-    setState(() => loading = true);
-
     dailyLoads.clear();
     totalLoad.clear();
-    averageLoad.clear();
     dailyDetails.clear();
-
 
     final start = DateTime(
       selectedRange!.start.year,
@@ -322,27 +324,21 @@ Map<AnatomicalGroup, double> _groupLoadsFrom(
       selectedRange!.end.day + 1,
     );
 
-    
-
-    // 1️⃣ Traer TODOS los ejercicios una sola vez
+    // 1️⃣ Catálogo de ejercicios (una sola query)
     final exercisesSnapshot = await FirebaseFirestore.instance
         .collection('exercises')
         .get();
 
     final Map<String, Map<String, dynamic>> exerciseMap = {};
-
     for (final doc in exercisesSnapshot.docs) {
       final data = doc.data();
       exerciseMap[data['name']] = {
-  'muscleWeights': Map<String, dynamic>.from(
-    data['muscleWeights'] ?? {},
-  ),
-  'exerciseType': data['exerciseType'] ?? 'Otro',
-};
-
+        'muscleWeights': Map<String, dynamic>.from(data['muscleWeights'] ?? {}),
+        'exerciseType': data['exerciseType'] ?? 'Otro',
+      };
     }
 
-    // 2️⃣ Traer workouts del rango
+    // 2️⃣ Planned workouts del rango
     final workoutsSnapshot = await FirebaseFirestore.instance
         .collection('planned_workouts')
         .where('athleteId', isEqualTo: widget.athleteId)
@@ -350,111 +346,84 @@ Map<AnatomicalGroup, double> _groupLoadsFrom(
         .where('date', isLessThan: Timestamp.fromDate(end))
         .get();
 
-    for (final workout in workoutsSnapshot.docs) {
-      final data = workout.data();
-      final routineId = data['routineId'];
+    if (workoutsSnapshot.docs.isEmpty) {
+      setState(() => loading = false);
+      return;
+    }
 
+    // 3️⃣ Mapear blockId → fecha normalizada
+    final Map<String, DateTime> blockIdToDate = {};
+
+    for (final doc in workoutsSnapshot.docs) {
+      final data = doc.data();
       final workoutDate = (data['date'] as Timestamp).toDate();
+      final normalizedDate = DateTime(workoutDate.year, workoutDate.month, workoutDate.day);
 
-      final normalizedDate = DateTime(
-        workoutDate.year,
-        workoutDate.month,
-        workoutDate.day,
-      );
-
-      dailyLoads.putIfAbsent(normalizedDate, () => {});
-
-      final routineDoc = await FirebaseFirestore.instance
-          .collection('routines')
-          .doc(routineId)
-          .get();
-
-      final blocks = List<Map<String, dynamic>>.from(
-        routineDoc.data()?['blocks'] ?? [],
-      );
-
-      for (final block in blocks) {
-
-  final String blockType =
-    (block['type'] ?? 'normal').toString().toLowerCase();
-
-
-  int blockMultiplier = 1;
-
-  // 🔁 CIRCUITO
-  if (blockType == 'circuito') {
-  blockMultiplier = block['rounds'] ?? 1;
-}
-else if (blockType == 'tabata') {
-  blockMultiplier = block['rounds'] ?? 1;
-}
-else if (blockType == 'emom') {
-  blockMultiplier = block['rounds'] ?? 1;
-}
-
-
-  final exercises = List<Map<String, dynamic>>.from(
-    block['exercises'] ?? [],
-  );
-
-
-        for (final ex in exercises) {
-  final String name = ex['name'];
-  final int baseSets = ex['series'] ?? 1;
-final int sets = baseSets * blockMultiplier;
-
-  final exerciseData = exerciseMap[name];
-
-if (exerciseData == null) continue;
-
-final weights =
-    Map<String, dynamic>.from(exerciseData['muscleWeights'] ?? {});
-
-final String type =
-    exerciseData['exerciseType'] ?? 'Otro';
-
-
-  weights.forEach((muscle, value) {
-  final weightValue = (value as num).toDouble();
-  final factor = exerciseTypeFactor[type] ?? 1.0;
-  final load = sets * weightValue * factor;
-
-  // 🔥 Asegurar fecha en ambos mapas
-  dailyLoads.putIfAbsent(normalizedDate, () => {});
-  dailyDetails.putIfAbsent(normalizedDate, () => {});
-
-  // 🔥 Carga muscular
-  dailyLoads[normalizedDate]![muscle] =
-      (dailyLoads[normalizedDate]![muscle] ?? 0) + load;
-
-  totalLoad[muscle] =
-      (totalLoad[muscle] ?? 0) + load;
-
-  exerciseTypeLoad[type] =
-      (exerciseTypeLoad[type] ?? 0) + load;
-
-  // 🔥 GUARDAR DETALLE
-  dailyDetails[normalizedDate]!
-      .putIfAbsent(muscle, () => []);
-
-  dailyDetails[normalizedDate]![muscle]!.add({
-    'name': name,
-    'sets': sets,
-    'load': load,
-    'type': type,
-  });
-});
-
-}
-
+      if (data['blockId'] != null) {
+        final blockId = data['blockId'] as String;
+        blockIdToDate[blockId] = normalizedDate;
+        dailyLoads.putIfAbsent(normalizedDate, () => {});
+        dailyDetails.putIfAbsent(normalizedDate, () => {});
       }
     }
 
-    final daysCount = selectedRange!.duration.inDays + 1;
+    // 4️⃣ Fetch paralelo de todos los bloques
+    final uniqueBlockIds = blockIdToDate.keys.toList();
+    final blockDocs = await Future.wait(
+      uniqueBlockIds.map((id) =>
+          FirebaseFirestore.instance.collection('blocks').doc(id).get()),
+    );
 
-    totalLoad.forEach((muscle, value) {
-      averageLoad[muscle] = value / daysCount;
-    });
+    final Map<String, Map<String, dynamic>> blocksCache = {};
+    for (int i = 0; i < uniqueBlockIds.length; i++) {
+      if (blockDocs[i].exists) {
+        blocksCache[uniqueBlockIds[i]] = blockDocs[i].data()!;
+      }
+    }
+
+    // 5️⃣ Calcular carga con los bloques cacheados
+    for (final entry in blockIdToDate.entries) {
+      final block = blocksCache[entry.key];
+      final normalizedDate = entry.value;
+      if (block == null) continue;
+
+      final String blockType = (block['type'] ?? 'normal').toString().toLowerCase();
+      int blockMultiplier = 1;
+      if (blockType == 'circuito' || blockType == 'tabata' || blockType == 'emom') {
+        blockMultiplier = (block['rounds'] as num?)?.toInt() ?? 1;
+      }
+
+      final exercises = List<Map<String, dynamic>>.from(block['exercises'] ?? []);
+
+      for (final ex in exercises) {
+        final String name = (ex['name'] ?? '').toString();
+        if (name.isEmpty) continue;
+
+        final int sets = ((ex['series'] as num?)?.toInt() ?? 1) * blockMultiplier;
+        final exerciseData = exerciseMap[name];
+        if (exerciseData == null) continue;
+
+        final weights = Map<String, dynamic>.from(exerciseData['muscleWeights'] ?? {});
+        final String exType = exerciseData['exerciseType'] ?? 'Otro';
+
+        weights.forEach((muscle, value) {
+          final load = sets * (value as num).toDouble() * (exerciseTypeFactor[exType] ?? 1.0);
+
+          dailyLoads[normalizedDate]![muscle] =
+              (dailyLoads[normalizedDate]![muscle] ?? 0) + load;
+          totalLoad[muscle] = (totalLoad[muscle] ?? 0) + load;
+          exerciseTypeLoad[exType] = (exerciseTypeLoad[exType] ?? 0) + load;
+
+          dailyDetails[normalizedDate]!.putIfAbsent(muscle, () => []);
+          dailyDetails[normalizedDate]![muscle]!.add({
+            'name': name,
+            'sets': sets,
+            'load': load,
+            'type': exType,
+          });
+        });
+      }
+    }
 
     setState(() => loading = false);
   }
@@ -587,239 +556,276 @@ String _muscleLabel(String key) {
 
 
 Widget _buildPerDayView() {
-  return SingleChildScrollView(
+  if (dailyLoads.isEmpty) {
+    return Center(
+      child: Text("Selecciona un rango con datos", style: TextStyle(color: Colors.grey[600])),
+    );
+  }
+
+  return ListView.builder(
     padding: const EdgeInsets.all(16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+    itemCount: dailyLoads.length,
+    itemBuilder: (context, index) {
+      final entry = dailyLoads.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+      final date = entry[index].key;
+      final muscles = entry[index].value;
 
-        Text(
-          "${selectedRange!.start.toString().split(' ')[0]}  →  ${selectedRange!.end.toString().split(' ')[0]}",
-          style: const TextStyle(fontWeight: FontWeight.bold),
+      final normalized = _normalizeAbsolute(_toMuscleMap(muscles));
+      final total = muscles.values.fold<double>(0, (a, b) => a + b);
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+          border: Border.all(color: const Color(0xFF2A2A2A)),
         ),
-
-        const SizedBox(height: 16),
-
-        SizedBox(
-          height: 500,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: dailyLoads.entries.map((entry) {
-                final date = entry.key;
-                final muscles = entry.value;
-
-                final normalized = _normalizeAbsolute(
-                  _toMuscleMap(muscles),
-                );
-
-                final total = muscles.values.fold<double>(
-                  0,
-                  (a, b) => a + b,
-                );
-
-                return GestureDetector(
-                  onTap: () {
-                    _openDayDetail(date, muscles);
-                  },
-                  child: Container(
-                    width: 500,
-                    margin: const EdgeInsets.only(right: 12),
-                    padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "${date.day}/${date.month}",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.5,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                      Text(
+                        "Carga diaria",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
+                      color: Theme.of(context).primaryColor.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Column(
-                      children: [
-                        Text(
-                          "${date.day}/${date.month}",
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          total.toStringAsFixed(1),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: BodyHeatmap(
-                                  heatmap: normalized,
-                                  showBack: false,
-                                ),
-                              ),
-                              Expanded(
-                                child: BodyHeatmap(
-                                  heatmap: normalized,
-                                  showBack: true,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      total.toStringAsFixed(1),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).primaryColor,
+                      ),
                     ),
                   ),
-                );
-              }).toList(),
+                ],
+              ),
             ),
-          ),
+            const Divider(height: 1, color: Color(0xFF2A2A2A)),
+            GestureDetector(
+              onTap: () => _openDayDetail(date, muscles),
+              child: Container(
+                height: 240,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: BodyHeatmap(heatmap: normalized, showBack: false),
+                    ),
+                    Expanded(
+                      child: BodyHeatmap(heatmap: normalized, showBack: true),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: TextButton.icon(
+                onPressed: () => _openDayDetail(date, muscles),
+                icon: Icon(Icons.zoom_in, size: 18, color: Theme.of(context).primaryColor.withOpacity(0.8)),
+                label: const Text("Ver detalle muscular"),
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                  textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.normal),
+                ),
+              ),
+            ),
+          ],
         ),
-      ],
-    ),
+      );
+    },
   );
 }
 
 
 
 Widget _buildSummaryUnifiedView() {
-  final source = _showAverage ? averageLoad : totalLoad;
-  final title = _showAverage ? "Promedio" : "Acumulado";
-
+  final source = totalLoad;
   final normalizedHeatmap = _normalizeAbsolute(_toMuscleMap(source));
-
   final groupLoads = _groupLoadsFrom(source);
-  final maxGroup = groupLoads.values.isEmpty
-      ? 1.0
-      : groupLoads.values.reduce((a, b) => a > b ? a : b);
 
-  AnatomicalGroup.values.map((g) {
-    final v = groupLoads[g] ?? 0;
-    if (maxGroup == 0) return 0.0;
-    return (v / maxGroup) * 100;
-  }).toList();
+  return ListView(
+    padding: const EdgeInsets.all(20),
+    children: [
+      // 🔥 CARD PRINCIPAL: HEATMAP + TABLA
+      Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+          border: Border.all(color: const Color(0xFF2A2A2A)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.accessibility_new, color: Theme.of(context).primaryColor),
+                const SizedBox(width: 12),
+                Text(
+                  "Distribución Muscular",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: -0.5,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              height: 380,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF121212),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFF2A2A2A)),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: BodyHeatmap(heatmap: normalizedHeatmap, showBack: false),
+                          ),
+                          Expanded(
+                            child: BodyHeatmap(heatmap: normalizedHeatmap, showBack: true),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    flex: 3,
+                    child: _buildMuscleTable(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
 
-  final maxType = exerciseTypeLoad.isEmpty
-      ? 1.0
-      : exerciseTypeLoad.values.reduce((a, b) => a > b ? a : b);
+      const SizedBox(height: 24),
 
-  exerciseTypeLoad.keys.toList();
+      // 🔥 PIE CHARTS EN FILA O COLUMNA
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth > 700;
+          return Wrap(
+            spacing: 20,
+            runSpacing: 20,
+            children: [
+              SizedBox(
+                width: isWide ? (constraints.maxWidth - 20) / 2 : constraints.maxWidth,
+                height: 320,
+                child: _buildPieChartCard(
+                  title: "Grupos Anatómicos",
+                  data: groupLoads,
+                  colorBase: Colors.blue,
+                ),
+              ),
+              SizedBox(
+                width: isWide ? (constraints.maxWidth - 20) / 2 : constraints.maxWidth,
+                height: 320,
+                child: _buildPieChartCard(
+                  title: "Tipos de Ejercicio",
+                  data: exerciseTypeLoad,
+                  colorBase: Colors.green,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+      const SizedBox(height: 40),
+    ],
+  );
+}
 
-  exerciseTypeLoad.values.map<double>((v) {
-    if (maxType == 0) return 0.0;
-    return (v / maxType) * 100;
-  }).toList();
-
-  return SingleChildScrollView(
-    padding: const EdgeInsets.all(12), // 👈 más compacto
+Widget _buildPieChartCard({
+  required String title,
+  required Map<dynamic, double> data,
+  required Color colorBase,
+}) {
+  return Container(
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(24),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.15),
+          blurRadius: 15,
+          offset: const Offset(0, 5),
+        ),
+      ],
+      border: Border.all(color: const Color(0xFF2A2A2A)),
+    ),
+    padding: const EdgeInsets.all(20),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-
-        // 🔹 Header compacto + switch
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                "${selectedRange!.start.toString().split(' ')[0]} → ${selectedRange!.end.toString().split(' ')[0]}",
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            Row(
-              children: [
-                const Text("Acum", style: TextStyle(fontSize: 12)),
-                Switch(
-                  value: _showAverage,
-                  onChanged: (v) => setState(() => _showAverage = v),
-                ),
-                const Text("Prom", style: TextStyle(fontSize: 12)),
-              ],
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 6),
-
         Text(
-          "Resumen $title",
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+            letterSpacing: -0.5,
+          ),
         ),
-
-        const SizedBox(height: 10),
-
-        // 🔥 Heatmap (un poco más alto, menos padding)
-        // 🔥 BLOQUE SUPERIOR → Heatmap + Tabla
-SizedBox(
-  height: 340,
-  child: Row(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-
-      // 🔥 CUERPO
-      Expanded(
-        flex: 2,
-        child: Row(
-          children: [
-            Expanded(
-              child: BodyHeatmap(
-                heatmap: normalizedHeatmap,
-                showBack: false,
-              ),
-            ),
-            Expanded(
-              child: BodyHeatmap(
-                heatmap: normalizedHeatmap,
-                showBack: true,
-              ),
-            ),
-          ],
+        const SizedBox(height: 16),
+        Expanded(
+          child: _buildPieChart(
+            title: title, // Title is passed but not used inside _buildPieChart now
+            data: data,
+            colorBase: colorBase,
+          ),
         ),
-      ),
-
-      const SizedBox(width: 12),
-
-      // 🔥 TABLA
-      Expanded(
-        flex: 3,
-        child: _buildMuscleTable(),
-      ),
-    ],
-  ),
-),
-
-const SizedBox(height: 16),
-
-// 🔥 BLOQUE INFERIOR → PIE CHARTS
-SizedBox(
-  height: 300,
-  child: Row(
-    children: [
-
-      // ===============================
-      // 🧠 GRUPOS ANATÓMICOS
-      // ===============================
-      Expanded(
-        child: _buildPieChart(
-          title: "Grupos Anatómicos",
-          data: groupLoads,
-          colorBase: Colors.blue,
-        ),
-      ),
-
-      const SizedBox(width: 16),
-
-      // ===============================
-      // 🏋 TIPOS DE EJERCICIO
-      // ===============================
-      Expanded(
-        child: _buildPieChart(
-          title: "Tipos de Ejercicio",
-          data: exerciseTypeLoad,
-          colorBase: Colors.green,
-        ),
-      ),
-    ],
-  ),
-),
-
       ],
     ),
   );
@@ -842,142 +848,110 @@ Widget _buildPieChart({
 
   List<Color> colors = [];
 
-for (int i = 0; i < entries.length; i++) {
-  final entry = entries[i];
-
-  if (entry.key is AnatomicalGroup) {
-    colors.add(
-      anatomicalPalette[i % anatomicalPalette.length],
-    );
-  } else {
-    // Para tipos de ejercicio dejamos gradiente base
-    final factor = 0.4 + (i * 0.12);
-    colors.add(
-      colorBase.withOpacity(factor.clamp(0.4, 0.9)),
-    );
+  for (int i = 0; i < entries.length; i++) {
+    final entry = entries[i];
+    if (entry.key is AnatomicalGroup) {
+      colors.add(
+        anatomicalPalette[i % anatomicalPalette.length],
+      );
+    } else {
+      final factor = 0.4 + (i * 0.12);
+      colors.add(
+        colorBase.withOpacity(factor.clamp(0.4, 0.9)),
+      );
+    }
   }
-}
 
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
+  return Row(
     children: [
+      // ===========================
+      // 🥧 PIE
+      // ===========================
+      Expanded(
+        flex: 2,
+        child: PieChart(
+          PieChartData(
+            sectionsSpace: 2,
+            centerSpaceRadius: 35,
+            sections: List.generate(entries.length, (index) {
+              final entry = entries[index];
+              final value = entry.value;
+              final percent = total == 0 ? 0 : (value / total) * 100;
 
-      Text(
-        title,
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
+              return PieChartSectionData(
+                value: value,
+                color: colors[index],
+                radius: 65,
+                title: "${percent.toStringAsFixed(0)}%",
+                titleStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              );
+            }),
+          ),
         ),
       ),
 
-      const SizedBox(height: 12),
+      const SizedBox(width: 16),
 
+      // ===========================
+      // 📊 LEYENDA AL LADO
+      // ===========================
       Expanded(
-        child: Row(
-          children: [
+        flex: 3,
+        child: ListView.builder(
+          itemCount: entries.length,
+          itemBuilder: (context, index) {
+            final entry = entries[index];
+            final value = entry.value;
+            final percent = total == 0 ? 0 : (value / total) * 100;
 
-            // ===========================
-            // 🥧 PIE
-            // ===========================
-            Expanded(
-              flex: 2,
-              child: PieChart(
-                PieChartData(
-                  sectionsSpace: 2,
-                  centerSpaceRadius: 35,
-                  sections: List.generate(entries.length, (index) {
-                    final entry = entries[index];
-                    final value = entry.value;
-                    final percent =
-                        total == 0 ? 0 : (value / total) * 100;
+            final label = entry.key is AnatomicalGroup
+                ? (entry.key as AnatomicalGroup).label
+                : entry.key.toString();
 
-                    return PieChartSectionData(
-                      value: value,
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
                       color: colors[index],
-                      radius: 65,
-                      title: "${percent.toStringAsFixed(0)}%",
-                      titleStyle: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    );
-                  }),
-                ),
-              ),
-            ),
-
-            const SizedBox(width: 16),
-
-            // ===========================
-            // 📊 LEYENDA AL LADO
-            // ===========================
-            Expanded(
-              flex: 3,
-              child: ListView.builder(
-                itemCount: entries.length,
-                itemBuilder: (context, index) {
-                  final entry = entries[index];
-                  final value = entry.value;
-                  final percent =
-                      total == 0 ? 0 : (value / total) * 100;
-
-                  final label = entry.key is AnatomicalGroup
-                      ? (entry.key as AnatomicalGroup).label
-                      : entry.key.toString();
-
-                  return Padding(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(
-                      children: [
-
-                        // 🔵 Indicador de color
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: colors[index],
-                            borderRadius:
-                                BorderRadius.circular(4),
-                          ),
-                        ),
-
-                        const SizedBox(width: 8),
-
-                        Expanded(
-                          child: Text(
-                            label,
-                            style: const TextStyle(
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-
-                        Text(
-                          value.toStringAsFixed(1),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-
-                        const SizedBox(width: 6),
-
-                        Text(
-                          "(${percent.toStringAsFixed(0)}%)",
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    value.toStringAsFixed(1),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    "(${percent.toStringAsFixed(0)}%)",
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     ],
@@ -989,51 +963,64 @@ for (int i = 0; i < entries.length; i++) {
 
 
 
-  // ==========================================================
-  // UI
-  // ==========================================================
   @override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(
-      title: const Text("Carga Planificada"),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.date_range),
-          onPressed: _pickRange,
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        foregroundColor: Theme.of(context).colorScheme.onSurface,
+        centerTitle: true,
+        title: const Text(
+          "Carga de Entrenamiento",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-      ],
-    ),
-    body: loading
-        ? const Center(child: CircularProgressIndicator())
-        : Column(
-            children: [
-
-              const SizedBox(height: 8),
-
-              TabBar(
-  controller: _tabController,
-  tabs: const [
-    Tab(text: "Por día"),
-    Tab(text: "Resumen"),
-  ],
-),
-
-
-              Expanded(
-                child: TabBarView(
-  controller: _tabController,
-  children: [
-    _buildPerDayView(),
-    _buildSummaryUnifiedView(),
-  ],
-),
-
-
-              ),
-            ],
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withOpacity(0.12),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              icon: Icon(Icons.calendar_today_rounded, size: 20, color: Theme.of(context).primaryColor),
+              onPressed: _pickRange,
+            ),
           ),
-  );
-}
+        ],
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Container(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  child: TabBar(
+                    controller: _tabController,
+                    labelColor: Theme.of(context).primaryColor,
+                    unselectedLabelColor: Colors.grey[600],
+                    indicatorColor: Theme.of(context).primaryColor,
+                    indicatorSize: TabBarIndicatorSize.label,
+                    indicatorWeight: 3,
+                    tabs: const [
+                      Tab(text: "Historial Diario"),
+                      Tab(text: "Resumen Total"),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildPerDayView(),
+                      _buildSummaryUnifiedView(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
 
 }

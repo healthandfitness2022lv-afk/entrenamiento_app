@@ -163,45 +163,32 @@ void initState() {
   }
 
   // ======================================================
-  // 📋 ROUTINES
-  // blocks[].exercises[].name
+  // 🧱 BLOCKS
+  // exercises[].name
   // ======================================================
-  final routinesSnap =
-      await firestore.collection('routines').get();
+  final blocksSnap =
+      await firestore.collection('blocks').get();
 
-  for (final doc in routinesSnap.docs) {
+  for (final doc in blocksSnap.docs) {
     final data = doc.data();
-    final List blocks =
-        List<Map<String, dynamic>>.from(data['blocks'] ?? []);
+    final List exercises =
+        List<Map<String, dynamic>>.from(data['exercises'] ?? []);
 
     bool changed = false;
 
-    for (int b = 0; b < blocks.length; b++) {
-      final block =
-          Map<String, dynamic>.from(blocks[b]);
+    for (int e = 0; e < exercises.length; e++) {
+      final ex = Map<String, dynamic>.from(exercises[e]);
 
-      final List exercises =
-          List<Map<String, dynamic>>.from(
-              block['exercises'] ?? []);
-
-      for (int e = 0; e < exercises.length; e++) {
-        final ex =
-            Map<String, dynamic>.from(exercises[e]);
-
-        if (ex['name'] == oldName) {
-          ex['name'] = newName;
-          exercises[e] = ex;
-          changed = true;
-        }
+      if (ex['name'] == oldName) {
+        ex['name'] = newName;
+        exercises[e] = ex;
+        changed = true;
       }
-
-      block['exercises'] = exercises;
-      blocks[b] = block;
     }
 
     if (changed) {
       await doc.reference.update({
-        'blocks': blocks,
+        'exercises': exercises,
         'updatedAt': FieldValue.serverTimestamp(),
       });
     }

@@ -2,7 +2,7 @@
     package="com.example.entrenamiento_app">
 
     <application
-        android:label="entrenamiento_app"
+        android:label="IRONGRIND"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 

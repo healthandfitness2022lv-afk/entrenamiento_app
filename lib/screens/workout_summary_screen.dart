@@ -8,7 +8,7 @@ class WorkoutSummaryScreen extends StatefulWidget {
   final List<ProgressAlert> progressAlerts;
   final Map<String, dynamic> oldStats;
   final Map<String, dynamic> newStats;
-  final String routineName;
+  final String sessionName;
   final int durationMinutes;
 
   const WorkoutSummaryScreen({
@@ -17,7 +17,7 @@ class WorkoutSummaryScreen extends StatefulWidget {
     this.progressAlerts = const [],
     required this.oldStats,
     required this.newStats,
-    required this.routineName,
+    required this.sessionName,
     required this.durationMinutes,
   });
 
@@ -103,7 +103,7 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          "${widget.routineName} - ${widget.durationMinutes} min",
+          "${widget.sessionName} - ${widget.durationMinutes} min",
           style: theme.textTheme.titleMedium?.copyWith(color: theme.textTheme.bodySmall?.color),
         ),
       ],

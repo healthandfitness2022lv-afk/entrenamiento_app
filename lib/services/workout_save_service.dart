@@ -438,8 +438,7 @@ class WorkoutSaveService {
 
     return await FirebaseFirestore.instance.collection('workouts_logged').add({
       'userId': uid,
-      'routineId': routine['id'],
-      'routineName': routine['name'],
+      'sessionName': routine['name'],
       'date': Timestamp.fromDate(now),
       'startedAt': Timestamp.fromDate(data.startedAt),
       'finishedAt': Timestamp.fromDate(data.finishedAt),
