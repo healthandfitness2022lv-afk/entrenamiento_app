@@ -1,10 +1,22 @@
-# VALORACIÓN — Valor estimado del desarrollo
+# VALORACIÓN — Valor de mercado y costo de desarrollo
 
 > Mantenida por los agentes de Nexus AI. Se actualiza con cada módulo o mejora entregada (PR).
 > Método: horas reales estimadas que tomaría desarrollar el módulo desde cero × tarifa base **$25.000 CLP/hora** (ver comercial/SERVICIOS.md en el repo nexus-ai). Incluye diseño, desarrollo, pruebas y documentación; no incluye hosting ni licencias.
 
+## Valor de mercado (lo que se puede cobrar)
+> Estimación comercial: cuánto pagaría un cliente por resolver su problema, según precios de alternativas en el mercado chileno (nov 2026). Las horas de abajo son solo el costo interno de desarrollo.
+
+- **Qué resuelve:** Gestión de alumnos, rutinas y planes para gimnasios y personal trainers.
+- **Competencia y precios de referencia:** GymMaster desde USD 25/mes, Fitco desde USD 79/mes, TeamUp/Mindbody ~USD 99/mes; en Chile BoxMagic y AgendaPro.
+- **Precio a un cliente:** Gimnasio chico $30.000–$60.000/mes; personal trainer $10.000–$20.000/mes; instalación $150.000–$300.000
+- **Venta exclusiva a un cliente:** $1.500.000 – $3.000.000 (app con la marca de un gimnasio)
+- **Valor hoy como producto (sin clientes):** $4.000.000 – $8.000.000
+- **Nota:** Mercado con competidores fuertes; el diferencial es precio local y app con la marca del propio gimnasio.
+- Fuentes: apps.shopify.com/bsale · guiadesoftware.com/blog/mejor-software-gestion-inventario-pymes-latam · capterra.es (GymMaster, Fitco, Boxmagic) · zenoti.com/es/thecheckin/best-fitness-gym-software-2026 · ecosistemastartup.com (easycancha) · 2x3.cl/p/precios-desarrollo-aplicacion-movil
+
+
 ## Resumen
-- **Valor total estimado: $20.450.000 CLP**
+- **Costo de desarrollo estimado (horas × tarifa): $20.450.000 CLP**
 - Horas acumuladas: 818 h
 - Última actualización: 2026-11-15 (valoración inicial + T-001)
 - Referencia de mercado: apps de entrenamiento para atleta/entrenador se venden por suscripción, p. ej. TrainingPeaks (https://www.trainingpeaks.com/pricing) y TrueCoach. Precios no verificados en esta ejecución; revisar las páginas. El valor aquí es costo de reemplazo, no precio de venta.
