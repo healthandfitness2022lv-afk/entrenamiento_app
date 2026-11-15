@@ -34,9 +34,10 @@ Máximo **una tarea por ejecución**. Si el presupuesto de la tarea se agota, de
 
 ## Comandos del proyecto
 <!-- Completar por proyecto: cómo instalar, testear, analizar. -->
-- Stack: Flutter/Dart
+- Stack: Flutter/Dart + Firebase (Auth, Firestore); ver docs/ARCHITECTURE.md
 - Instalar: `flutter pub get`
 - Tests: `flutter test`
 - Análisis estático: `flutter analyze`
+- Tests: 5 suites en `test/`. Scripts `scripts/*.mjs` tocan datos reales: no ejecutar.
 - Hay instrucciones previas del proyecto en `CLAUDE.previo.md`: léelas.
 - Desplegar está prohibido para los agentes (lo hace el humano).
