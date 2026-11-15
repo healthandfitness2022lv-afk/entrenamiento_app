@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -1 /c/Users/healt/Desktop/NEXUS/entrenamiento_app/lib/services/*.dart)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(for service:*)",
+      "Bash(do echo:*)",
+      "Bash(grep -r \"$service\" lib --include=\"*.dart\")",
+      "Bash(grep -v \"^lib/services/$service\")",
+      "Bash(done)",
+      "Bash(find /c/Users/healt/Desktop/NEXUS/entrenamiento_app/lib -name \"*.dart\" -exec grep -l \"^\\\\s*\\\\/\\\\/.*\\\\\\(if\\\\|for\\\\|while\\\\|final\\\\|var\\\\|const\\\\|class\\\\|void\\\\|Future\\\\\\)\" {})",
+      "Bash(for widget:*)",
+      "Bash(__NEW_LINE_abcfb00902ab0891__ grep:*)",
+      "Bash(grep -v \"^lib/widgets/$widget\")",
+      "Bash(node diagnose.js)",
+      "Bash(node inspect_exercises.js)",
+      "Bash(node \"C:\\\\Users\\\\healt\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-healt-Desktop-NEXUS-entrenamiento-app\\\\00e7daf7-bf82-4c6b-a693-a45598a8621b\\\\scratchpad\\\\diag\\\\check_exercise.js\")"
+    ]
+  }
+}

@@ -6,18 +6,17 @@ import '../models/muscle_catalog.dart';
 import '../widgets/body_heatmap.dart';
 import 'my_workouts_screen.dart';
 import 'fatigue_audit_screen.dart';
-import '../services/fatigue_service.dart';
-
-
-import '../services/fatigue_recalculation_service.dart';
 import 'achievements_screen.dart';
+import '../services/fatigue_recalculation_service.dart';
+import '../services/athlete_selection_service.dart';
+import '../services/athlete_report_service.dart';
+import 'stats_screen.dart';
+import '../utils/responsive.dart';
+import '../theme/app_theme.dart';
 
 enum MuscleViewMode { muscle, anatomical, functional }
 
 MuscleViewMode fatigueViewMode = MuscleViewMode.muscle;
-
-
-
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -32,14 +31,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool loading = true;
   bool calculatingFatigue = false;
   DateTime? lastFatigueCalculation;
+
+  /// Último guardado/edición de un workout del atleta, para avisar cuando
+  /// la fatiga mostrada es anterior (hay que recalcular).
+  DateTime? latestWorkoutAt;
   List<FatigueRecalculationStep>? lastAuditSteps;
   late Set<Muscle> pendingChartMuscles;
   bool hasPendingChanges = false;
   bool showGlobalFatigue = true;
 
+  final user = FirebaseAuth.instance.currentUser;
+  String? role;
+  String? selectedAthleteId;
+  String? selectedAthleteName;
 
   Set<Muscle> chartMuscles = {};
-
   DateTimeRange? chartRange;
 
   @override
@@ -49,8 +55,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   String _heatmapSignature(Map<Muscle, double> heatmap) {
-    final entries = heatmap.entries.toList()
-      ..sort((a, b) => a.key.index.compareTo(b.key.index));
+    final entries =
+        heatmap.entries.toList()
+          ..sort((a, b) => a.key.index.compareTo(b.key.index));
 
     return entries
         .map((e) => '${e.key.name}:${e.value.toStringAsFixed(2)}')
@@ -61,33 +68,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // 🔄 CARGA INICIAL (estado guardado + recuperación lazy)
   // ======================================================
   Future<void> _loadInitialState() async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    if (user == null) return;
 
-    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+    final userDoc =
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user!.uid)
+            .get();
 
-    
+    role = userDoc.data()?['role'];
 
-    // 🔥 2) leer auditoría persistida
-    final auditSnap = await userRef
-        .collection('fatigue_audit')
-        .orderBy('workoutDate')
-        .get();
-
-    if (auditSnap.docs.isNotEmpty) {
-      lastAuditSteps = auditSnap.docs
-          .map((d) => FatigueRecalculationStep.fromJson(d.data()))
-          .toList();
+    if (role == 'administrador') {
+      final saved = await AthleteSelectionService.load();
+      if (saved != null) {
+        selectedAthleteId = saved['id'];
+        selectedAthleteName = saved['name'];
+      }
     }
 
-    _rebuildHeatmapFromSteps();
+    selectedAthleteId ??= user!.uid;
+    selectedAthleteName ??= userDoc.data()?['name'];
 
-    // 🔹 FECHA ÚLTIMO CÁLCULO
-    final userDoc = await userRef.get();
-    final userData = userDoc.data();
-    if (userData?['lastFatigueCalculation'] != null) {
-      lastFatigueCalculation =
-          (userData!['lastFatigueCalculation'] as Timestamp).toDate();
-    }
+    await _loadAthleteFatigue(selectedAthleteId!);
 
     if (!mounted) return;
 
@@ -97,32 +99,158 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  
+  Future<void> _loadAthleteFatigue(String uid) async {
+    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+
+    // 🔥 2) leer auditoría persistida (solo para la pantalla de auditoría)
+    final auditSnap =
+        await userRef.collection('fatigue_audit').orderBy('workoutDate').get();
+
+    if (auditSnap.docs.isNotEmpty) {
+      lastAuditSteps =
+          auditSnap.docs
+              .map((d) => FatigueRecalculationStep.fromJson(d.data()))
+              .toList();
+    } else {
+      lastAuditSteps = null;
+    }
+
+    // 🔥 Heatmap: leído directo de fatigue_state/latest con recuperación
+    // aplicada hasta ahora — misma fuente que usa el resto de la app, en vez
+    // de reconstruir el algoritmo de recuperación aquí.
+    final currentFatigue = await FatigueRecalculationService.readCurrentFatigue(
+      uid: uid,
+    );
+    heatmap
+      ..clear()
+      ..addAll(currentFatigue);
+
+    // 🔹 FECHA ÚLTIMO CÁLCULO
+    final userDoc = await userRef.get();
+    final userData = userDoc.data();
+    if (userData?['lastFatigueCalculation'] != null) {
+      lastFatigueCalculation =
+          (userData!['lastFatigueCalculation'] as Timestamp).toDate();
+    } else {
+      lastFatigueCalculation = null;
+    }
+
+    // 🔹 ÚLTIMO WORKOUT (índice userId + date DESC ya existe)
+    try {
+      final latest =
+          await FirebaseFirestore.instance
+              .collection('workouts_logged')
+              .where('userId', isEqualTo: uid)
+              .orderBy('date', descending: true)
+              .limit(1)
+              .get();
+      if (latest.docs.isEmpty) {
+        latestWorkoutAt = null;
+      } else {
+        final data = latest.docs.first.data();
+        final updated = (data['updatedAt'] as Timestamp?)?.toDate();
+        final date = (data['date'] as Timestamp?)?.toDate();
+        latestWorkoutAt =
+            (updated != null && (date == null || updated.isAfter(date)))
+                ? updated
+                : date;
+      }
+    } catch (_) {
+      // Solo alimenta el aviso de "desactualizado"; no bloquea el perfil.
+      latestWorkoutAt = null;
+    }
+  }
+
+  Future<void> _selectAthlete() async {
+    final snapshot =
+        await FirebaseFirestore.instance
+            .collection('users')
+            .where('role', whereIn: ['atleta', 'administrador'])
+            .get();
+
+    final users = snapshot.docs;
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (_) => AlertDialog(
+            title: const Text("Seleccionar atleta"),
+            content: SizedBox(
+              width: 300,
+              height: 400,
+              child: ListView.builder(
+                itemCount: users.length,
+                itemBuilder: (context, index) {
+                  final u = users[index];
+                  final isMe = u.id == user!.uid;
+
+                  return ListTile(
+                    leading:
+                        isMe
+                            ? const Icon(Icons.person, color: Colors.blue)
+                            : const Icon(Icons.fitness_center),
+                    title: Text(isMe ? "${u['name']} (Yo)" : u['name']),
+                    onTap: () {
+                      setState(() {
+                        selectedAthleteId = u.id;
+                        selectedAthleteName = u['name'];
+                        loading = true;
+                      });
+                      AthleteSelectionService.save(u.id, u['name']);
+                      _loadAthleteFatigue(u.id).then((_) {
+                        if (mounted) setState(() => loading = false);
+                      });
+                      Navigator.pop(context);
+                    },
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cancelar"),
+              ),
+            ],
+          ),
+    );
+  }
 
   Future<void> _recalculateFatigue() async {
     setState(() => calculatingFatigue = true);
 
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final uid = selectedAthleteId ?? user!.uid;
 
-    final result = await FatigueRecalculationService.recalculateAndPersist(
-      uid: uid,
-      forceRecalculateLoad: true,
-    );
+    final FatigueRecalculationResult result;
+    try {
+      result = await FatigueRecalculationService.recalculateAndPersist(
+        uid: uid,
+        forceRecalculateLoad: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => calculatingFatigue = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("No se pudo recalcular la fatiga: $e")),
+      );
+      return;
+    }
 
     if (!mounted) return;
 
-    final now = DateTime.now(); // 👈 NUEVO
+    final now = DateTime.now();
 
     setState(() {
-  lastAuditSteps = result.steps;
-_rebuildHeatmapFromSteps();
-
-  // 🔥 ACTUALIZAR AUDITORÍA TAMBIÉN
-  lastAuditSteps = result.steps;
-
-  lastFatigueCalculation = now;
-  calculatingFatigue = false;
-});
+      lastAuditSteps = result.steps;
+      heatmap
+        ..clear()
+        ..addAll(result.finalFatigue);
+      lastFatigueCalculation = now;
+      calculatingFatigue = false;
+    });
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -132,106 +260,201 @@ _rebuildHeatmapFromSteps();
     );
   }
 
- void _rebuildHeatmapFromSteps() {
-  if (lastAuditSteps == null || lastAuditSteps!.isEmpty) {
-    heatmap.clear();
-    return;
-  }
-
-  final sorted = [...lastAuditSteps!]
-    ..sort((a, b) => a.workoutDate.compareTo(b.workoutDate));
-
-  final start = sorted.first.workoutDate;
-
-  final Map<Muscle, double> fatigue = {
-    for (final m in Muscle.values) m: 0.0,
-  };
-
-  final Map<Muscle, DateTime> lastUpdate = {
-    for (final m in Muscle.values) m: start,
-  };
-
-  for (final step in sorted) {
-    final t = step.workoutDate;
-
-    for (final m in Muscle.values) {
-      // recuperar hasta workout
-      fatigue[m] = FatigueService.recoverToNow(
-        muscle: m,
-        fatigue: fatigue[m]!,
-        lastUpdate: lastUpdate[m]!,
-        now: t,
-      );
-
-      // aplicar carga
-      final load = step.loadApplied[m] ?? 0;
-      fatigue[m] = fatigue[m]! + load;
-
-      lastUpdate[m] = t;
-    }
-  }
-
-  // 🔥 recuperar hasta ahora SOLO UNA VEZ
-  final now = DateTime.now();
-
-  for (final m in Muscle.values) {
-    fatigue[m] = FatigueService.recoverToNow(
-      muscle: m,
-      fatigue: fatigue[m]!,
-      lastUpdate: lastUpdate[m]!,
-      now: now,
-    );
-  }
-
-  heatmap
-    ..clear()
-    ..addAll(fatigue);
-}
-
   // ======================================================
   // 🖥 UI
   // ======================================================
   @override
   Widget build(BuildContext context) {
-    if (loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    final compact = context.isCompact;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Perfil corporal"),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.analytics_outlined),
-            tooltip: "Ver auditoría de fatiga",
-            onPressed: lastAuditSteps == null
-                ? null
-                : () => _showAudit(lastAuditSteps!),
-          ),
-          IconButton(
-            icon: calculatingFatigue
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh),
-            tooltip: "Recalcular fatiga",
-            onPressed: calculatingFatigue ? null : _recalculateFatigue,
-          ),
-        ],
+        title: Column(
+          crossAxisAlignment:
+              compact ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+          children: [
+            const Text("Perfil corporal", style: TextStyle(fontSize: 16)),
+            if (selectedAthleteName != null)
+              Text(
+                selectedAthleteName!.toUpperCase(),
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+          ],
+        ),
+        centerTitle: !compact,
+        actions: _appBarActions(compact),
       ),
 
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+      body:
+          loading
+              ? _loadingSkeleton()
+              : RefreshIndicator(
+                onRefresh: _reloadAthlete,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.all(compact ? 12 : 24),
+                  child: ResponsiveCenter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _summaryCard(),
+                        SizedBox(height: compact ? 20 : 32),
+                        _bodyAndMusclesSection(),
+                        const SizedBox(height: 48),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+    );
+  }
+
+  // ======================================================
+  // 🔝 BARRA SUPERIOR
+  // ======================================================
+  /// En pantallas angostas: solo "cambiar atleta" a la vista y el resto en
+  /// un menú ⋮ (5 íconos sin texto aplastaban el título y no se entendían).
+  /// En tablet/PC: botones con texto. "Recalcular" vive en la tarjeta de
+  /// estado, junto a la fecha del último cálculo.
+  List<Widget> _appBarActions(bool compact) {
+    final isAdmin = role == 'administrador';
+    final auditAvailable = lastAuditSteps != null;
+
+    if (compact) {
+      return [
+        if (isAdmin)
+          IconButton(
+            icon: const Icon(Icons.people_outline),
+            tooltip: "Cambiar atleta",
+            onPressed: _selectAthlete,
+          ),
+        PopupMenuButton<String>(
+          tooltip: "Más opciones",
+          onSelected: (value) {
+            switch (value) {
+              case 'stats':
+                _openStats();
+              case 'pdf':
+                _generatePdf();
+              case 'audit':
+                _showAudit(lastAuditSteps!);
+            }
+          },
+          itemBuilder:
+              (_) => [
+                const PopupMenuItem(
+                  value: 'stats',
+                  child: ListTile(
+                    leading: Icon(Icons.bar_chart_rounded),
+                    title: Text("Estadísticas"),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'pdf',
+                  child: ListTile(
+                    leading: Icon(Icons.picture_as_pdf_outlined),
+                    title: Text("Informe PDF"),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'audit',
+                  enabled: auditAvailable,
+                  child: const ListTile(
+                    leading: Icon(Icons.analytics_outlined),
+                    title: Text("Auditoría de fatiga"),
+                  ),
+                ),
+              ],
+        ),
+      ];
+    }
+
+    return [
+      if (isAdmin)
+        TextButton.icon(
+          icon: const Icon(Icons.people_outline),
+          label: const Text("Cambiar atleta"),
+          onPressed: _selectAthlete,
+        ),
+      TextButton.icon(
+        icon: const Icon(Icons.bar_chart_rounded),
+        label: const Text("Estadísticas"),
+        onPressed: _openStats,
+      ),
+      TextButton.icon(
+        icon: const Icon(Icons.picture_as_pdf_outlined),
+        label: const Text("Informe PDF"),
+        onPressed: _generatePdf,
+      ),
+      TextButton.icon(
+        icon: const Icon(Icons.analytics_outlined),
+        label: const Text("Auditoría"),
+        onPressed: auditAvailable ? () => _showAudit(lastAuditSteps!) : null,
+      ),
+      const SizedBox(width: 8),
+    ];
+  }
+
+  void _openStats() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (_) => StatsScreen(
+              uid: selectedAthleteId ?? user!.uid,
+              athleteName: selectedAthleteName,
+              heatmap: heatmap.isNotEmpty ? Map.from(heatmap) : null,
+            ),
+      ),
+    );
+  }
+
+  Future<void> _reloadAthlete() async {
+    final uid = selectedAthleteId ?? user?.uid;
+    if (uid == null) return;
+    await _loadAthleteFatigue(uid);
+    if (mounted) setState(() {});
+  }
+
+  /// Silueta gris del contenido mientras carga, en vez de una pantalla vacía
+  /// con un spinner: se percibe más rápido y no "salta" el layout al cargar.
+  Widget _loadingSkeleton() {
+    final compact = context.isCompact;
+    final base = Theme.of(context).colorScheme.onSurface.withOpacity(0.06);
+    Widget box(double height) => Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: base,
+        borderRadius: BorderRadius.circular(16),
+      ),
+    );
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(compact ? 12 : 24),
+      child: ResponsiveCenter(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _summaryCard(),
-            const SizedBox(height: 32),
-            _bodyAndMusclesSection(),
-            const SizedBox(height: 48),
+            box(120),
+            const SizedBox(height: 24),
+            box(40),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(child: box(compact ? 260 : 380)),
+                const SizedBox(width: 12),
+                Expanded(child: box(compact ? 260 : 380)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            for (var i = 0; i < 5; i++) ...[
+              box(28),
+              const SizedBox(height: 10),
+            ],
           ],
         ),
       ),
@@ -239,21 +462,7 @@ _rebuildHeatmapFromSteps();
   }
 
   double generalFatigueTopMuscles() {
-    if (heatmap.isEmpty) return 0;
-
-    // 🔹 tomamos solo músculos con carga real (evita ruido)
-    final values = heatmap.values.where((v) => v >= 5).toList();
-
-    if (values.isEmpty) return 0;
-
-    // 🔥 orden descendente
-    values.sort((a, b) => b.compareTo(a));
-
-    // 🔥 TOP 5
-    final top = values.take(5).toList();
-
-    final avg = top.reduce((a, b) => a + b) / top.length;
-    return avg.clamp(0, 100);
+    return FatigueRecalculationService.calculateGlobalFatigue(heatmap, topK: 5);
   }
 
   Widget _bodyAndMusclesSection() {
@@ -261,6 +470,34 @@ _rebuildHeatmapFromSteps();
       return _buildEmptyState();
     }
 
+    final heatmaps = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: _bodyBlock("Frontal", false)),
+        const SizedBox(width: 8),
+        Expanded(child: _bodyBlock("Posterior", true)),
+      ],
+    );
+
+    // Celular: una sola columna. Antes eran dos columnas fijas, y en 360 px
+    // cada silueta quedaba de ~80 px de ancho y las barras comprimidas.
+    if (context.isCompact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(child: _buildViewModeTabs()),
+          const SizedBox(height: 16),
+          heatmaps,
+          const SizedBox(height: 24),
+          _sectionTitle("Fatiga por músculo"),
+          _allMusclesList(),
+          const SizedBox(height: 24),
+          _actions(),
+        ],
+      );
+    }
+
+    // Tablet / PC: siluetas + cuenta a la izquierda, barras a la derecha.
     return Column(
       children: [
         _buildViewModeTabs(),
@@ -268,39 +505,36 @@ _rebuildHeatmapFromSteps();
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // COLUMNA IZQUIERDA (Heatmaps y Cuenta en una caja)
             Expanded(
               flex: 10,
               child: Column(
-                children: [
-                  // Fila de Heatmaps
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: _bodyBlock("Frontal", false)),
-                      const SizedBox(width: 8),
-                      Expanded(child: _bodyBlock("Posterior", true)),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  // Debajo de Heatmaps pero lado izquierdo
-                  _actions(),
-                ],
+                children: [heatmaps, const SizedBox(height: 24), _actions()],
               ),
             ),
-            
-            const SizedBox(width: 24),
-            
-            // COLUMNA DERECHA (Barras de músculos, más cortas)
+            const SizedBox(width: 32),
             Expanded(
               flex: 11,
-              child: _allMusclesList(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sectionTitle("Fatiga por músculo"),
+                  _allMusclesList(),
+                ],
+              ),
             ),
           ],
         ),
       ],
     );
   }
+
+  Widget _sectionTitle(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      text,
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+    ),
+  );
 
   Widget _buildEmptyState() {
     return Center(
@@ -322,7 +556,7 @@ _rebuildHeatmapFromSteps();
               onPressed: () {
                 Navigator.of(context).popUntil((route) => route.isFirst);
               },
-            )
+            ),
           ],
         ),
       ),
@@ -338,19 +572,24 @@ _rebuildHeatmapFromSteps();
           ChoiceChip(
             label: const Text("Músculo"),
             selected: fatigueViewMode == MuscleViewMode.muscle,
-            onSelected: (_) => setState(() => fatigueViewMode = MuscleViewMode.muscle),
+            onSelected:
+                (_) => setState(() => fatigueViewMode = MuscleViewMode.muscle),
           ),
           const SizedBox(width: 8),
           ChoiceChip(
             label: const Text("Grupo"),
             selected: fatigueViewMode == MuscleViewMode.anatomical,
-            onSelected: (_) => setState(() => fatigueViewMode = MuscleViewMode.anatomical),
+            onSelected:
+                (_) =>
+                    setState(() => fatigueViewMode = MuscleViewMode.anatomical),
           ),
           const SizedBox(width: 8),
           ChoiceChip(
             label: const Text("Funcional"),
             selected: fatigueViewMode == MuscleViewMode.functional,
-            onSelected: (_) => setState(() => fatigueViewMode = MuscleViewMode.functional),
+            onSelected:
+                (_) =>
+                    setState(() => fatigueViewMode = MuscleViewMode.functional),
           ),
         ],
       ),
@@ -358,161 +597,155 @@ _rebuildHeatmapFromSteps();
   }
 
   Widget _allMusclesList() {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      if (fatigueViewMode == MuscleViewMode.muscle)
-        _buildMuscleView(),
-
-      if (fatigueViewMode == MuscleViewMode.anatomical)
-        _buildGroupView(
-          anatomicalGroups,
-          (g) => g.label,
-        ),
-
-      if (fatigueViewMode == MuscleViewMode.functional)
-        _buildGroupView(
-          functionalGroups,
-          (g) => g.label,
-        ),
-
-      const SizedBox(height: 16),
-      const Divider(),
-      _heatmapLegendBar(),
-    ],
-  );
-}
-
-Widget _buildMuscleView() {
-  final entries = heatmap.entries.toList()
-    ..sort((a, b) => b.value.compareTo(a.value));
-
-  return Column(
-    children: entries.map((e) {
-      return _fatigueRow(e.key.label, e.value);
-    }).toList(),
-  );
-}
-
-
-Widget _buildGroupView<T>(
-  Map<T, List<Muscle>> groups,
-  String Function(T) labelGetter,
-)
- {
-  final results = <MapEntry<String, double>>[];
-
-for (final entry in groups.entries) {
-  final muscles = entry.value;
-
-  final values = muscles
-      .map((m) => heatmap[m] ?? 0)
-      .where((v) => v >= 4)
-      .toList();
-
-  if (values.isEmpty) continue;
-
-  final avg = values.reduce((a, b) => a + b) / values.length;
-
-  results.add(MapEntry(labelGetter(entry.key), avg));
-}
-
-results.sort((a, b) => b.value.compareTo(a.value));
-
-return Column(
-  children: results.map((e) {
-    return _fatigueRow(e.key, e.value);
-  }).toList(),
-);
-
-}
-
-Widget _fatigueRow(String label, double value) {
-  final isLowValue = value < 4;
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8),
-    child: Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-            Text(
-              "${value.toStringAsFixed(1)}",
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: isLowValue ? Colors.grey.shade600 : heatmapColor(value),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: (value / 100).clamp(0.0, 1.0),
-            backgroundColor: Colors.grey.shade200,
-            color: isLowValue ? const Color(0xFF4FC3F7).withOpacity(0.5) : heatmapColor(value),
-            minHeight: 8,
-          ),
-        ),
-      ],
-    ),
-  );
-}
+        if (fatigueViewMode == MuscleViewMode.muscle) _buildMuscleView(),
 
+        if (fatigueViewMode == MuscleViewMode.anatomical)
+          _buildGroupView(anatomicalGroups, (g) => g.label),
+
+        if (fatigueViewMode == MuscleViewMode.functional)
+          _buildGroupView(functionalGroups, (g) => g.label),
+
+        const SizedBox(height: 16),
+        const Divider(),
+        _heatmapLegendBar(),
+      ],
+    );
+  }
+
+  Widget _buildMuscleView() {
+    final entries =
+        heatmap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+
+    return Column(
+      children:
+          entries.map((e) {
+            return _fatigueRow(e.key.label, e.value);
+          }).toList(),
+    );
+  }
+
+  Widget _buildGroupView<T>(
+    Map<T, List<Muscle>> groups,
+    String Function(T) labelGetter,
+  ) {
+    final results = <MapEntry<String, double>>[];
+
+    for (final entry in groups.entries) {
+      final muscles = entry.value;
+
+      final values =
+          muscles.map((m) => heatmap[m] ?? 0).where((v) => v >= 4).toList();
+
+      if (values.isEmpty) continue;
+
+      final avg = values.reduce((a, b) => a + b) / values.length;
+
+      results.add(MapEntry(labelGetter(entry.key), avg));
+    }
+
+    results.sort((a, b) => b.value.compareTo(a.value));
+
+    return Column(
+      children:
+          results.map((e) {
+            return _fatigueRow(e.key, e.value);
+          }).toList(),
+    );
+  }
+
+  Widget _fatigueRow(String label, double value) {
+    final isLowValue = value < 4;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                "${value.toStringAsFixed(1)}",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color:
+                      isLowValue ? Colors.grey.shade600 : heatmapColor(value),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: (value / 100).clamp(0.0, 1.0),
+              backgroundColor: Colors.white12,
+              color:
+                  isLowValue
+                      ? const Color(0xFF4FC3F7).withOpacity(0.5)
+                      : heatmapColor(value),
+              minHeight: 8,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _heatmapLegendBar() {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const SizedBox(height: 12),
-      const Text(
-        "Escala de fatiga (0–100)",
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-      ),
-      const SizedBox(height: 6),
-      Container(
-        height: 14,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          gradient: const LinearGradient(
-  stops: [0.0, 0.04, 0.28, 0.52, 0.76, 0.95, 1.0],
-  colors: [
-    Colors.transparent,          // 0–4
-    Color(0xFF4FC3F7),     // Celeste
-    Color(0xFF1565C0),     // Azul
-    Color(0xFF7B1FA2),     // Morado
-    Color(0xFFFF8F00),     // Naranjo
-    Color(0xFFB71C1C),     // Rojo intenso
-    Color(0xFFB71C1C),     // Rojo sólido 95–100
-  ],
-)
-
-
-
-
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        const Text(
+          "Escala de fatiga (0–100)",
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
         ),
-      ),
-      const SizedBox(height: 4),
-      const Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text("0", style: TextStyle(fontSize: 10)),
-          Text("50", style: TextStyle(fontSize: 10)),
-          Text("100", style: TextStyle(fontSize: 10)),
-        ],
-      )
-    ],
-  );
-}
+        const SizedBox(height: 6),
+        Container(
+          height: 14,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            gradient: const LinearGradient(
+              stops: [0.0, 0.04, 0.28, 0.52, 0.76, 0.95, 1.0],
+              colors: [
+                Colors.transparent, // 0–4
+                Color(0xFF4FC3F7), // Celeste
+                Color(0xFF1565C0), // Azul
+                Color(0xFF7B1FA2), // Morado
+                Color(0xFFFF8F00), // Naranjo
+                Color(0xFFB71C1C), // Rojo intenso
+                Color(0xFFB71C1C), // Rojo sólido 95–100
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text("0", style: TextStyle(fontSize: 10)),
+            Text("50", style: TextStyle(fontSize: 10)),
+            Text("100", style: TextStyle(fontSize: 10)),
+          ],
+        ),
+      ],
+    );
+  }
 
   // ======================================================
   // 👤 ENCABEZADO DE USUARIO
   // ======================================================
-
 
   // ======================================================
   // 📊 RESUMEN GENERAL
@@ -520,86 +753,163 @@ Widget _fatigueRow(String label, double value) {
   Widget _summaryCard() {
     final avgFatigue = generalFatigueTopMuscles();
 
-    final status = avgFatigue < 25
-        ? "Recuperado, listo para entrenar"
-        : avgFatigue < 55
-        ? "Carga moderada, buen progreso"
-        : "Alta carga, considera descansar";
+    final status =
+        avgFatigue < 25
+            ? "Recuperado, listo para entrenar"
+            : avgFatigue < 55
+            ? "Carga moderada, buen progreso"
+            : "Alta carga, considera descansar";
 
     final color = heatmapColor(avgFatigue);
+    final compact = context.isCompact;
+    final stale = _isFatigueStale;
+
+    final recalcButton = FilledButton.icon(
+      style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+      onPressed: calculatingFatigue ? null : _recalculateFatigue,
+      icon:
+          calculatingFatigue
+              ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+              : const Icon(Icons.refresh),
+      label: Text(calculatingFatigue ? "Recalculando…" : "Recalcular fatiga"),
+    );
 
     return Card(
       elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side:
+            stale
+                ? BorderSide(color: Colors.amber.withOpacity(0.6))
+                : BorderSide.none,
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
+        padding: EdgeInsets.all(compact ? 16 : 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(
-              height: 80,
-              width: 80,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CircularProgressIndicator(
-                    value: avgFatigue / 100,
-                    backgroundColor: Colors.grey.shade200,
-                    color: color,
-                    strokeWidth: 8,
+            Row(
+              crossAxisAlignment:
+                  compact
+                      ? CrossAxisAlignment.start
+                      : CrossAxisAlignment.center,
+              children: [
+                ..._summaryContent(avgFatigue, status, color),
+                if (!compact) ...[const SizedBox(width: 16), recalcButton],
+                // Celular: botoncito en la esquina de la tarjeta (el botón
+                // ancho ocupaba una fila entera).
+                if (compact) ...[
+                  const SizedBox(width: 4),
+                  IconButton.filledTonal(
+                    tooltip: "Recalcular fatiga",
+                    visualDensity: VisualDensity.compact,
+                    iconSize: 18,
+                    onPressed: calculatingFatigue ? null : _recalculateFatigue,
+                    icon:
+                        calculatingFatigue
+                            ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                            : const Icon(Icons.refresh),
                   ),
-                  Center(
+                ],
+              ],
+            ),
+            if (stale) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 18, color: Colors.amber),
+                  const SizedBox(width: 8),
+                  const Expanded(
                     child: Text(
-                      "${avgFatigue.toInt()}%",
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: color,
-                      ),
+                      "Hay entrenamientos posteriores al último cálculo. "
+                      "Recalcula para ver la fatiga al día.",
+                      style: TextStyle(fontSize: 12, color: Colors.amber),
                     ),
                   ),
                 ],
               ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Hay workouts guardados/editados después del último recálculo.
+  bool get _isFatigueStale =>
+      latestWorkoutAt != null &&
+      (lastFatigueCalculation == null ||
+          latestWorkoutAt!.isAfter(lastFatigueCalculation!));
+
+  List<Widget> _summaryContent(double avgFatigue, String status, Color color) {
+    return [
+      SizedBox(
+        height: 80,
+        width: 80,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CircularProgressIndicator(
+              value: avgFatigue / 100,
+              backgroundColor: Colors.white12,
+              color: color,
+              strokeWidth: 8,
             ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Estado general",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    status,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: color.withOpacity(0.9),
-                    ),
-                  ),
-                  if (lastFatigueCalculation != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        "Último cálculo: "
-                        "${lastFatigueCalculation!.day.toString().padLeft(2, '0')}/"
-                        "${lastFatigueCalculation!.month.toString().padLeft(2, '0')} "
-                        "${lastFatigueCalculation!.hour.toString().padLeft(2, '0')}:"
-                        "${lastFatigueCalculation!.minute.toString().padLeft(2, '0')}",
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ),
-                ],
+            Center(
+              child: Text(
+                "${avgFatigue.toInt()}%",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
               ),
             ),
           ],
         ),
       ),
-    );
+      const SizedBox(width: 20),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Estado general",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              status,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: color.withOpacity(0.9),
+              ),
+            ),
+            if (lastFatigueCalculation != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  "Último cálculo: "
+                  "${lastFatigueCalculation!.day.toString().padLeft(2, '0')}/"
+                  "${lastFatigueCalculation!.month.toString().padLeft(2, '0')} "
+                  "${lastFatigueCalculation!.hour.toString().padLeft(2, '0')}:"
+                  "${lastFatigueCalculation!.minute.toString().padLeft(2, '0')}",
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ];
   }
 
   // ======================================================
@@ -619,11 +929,10 @@ Widget _fatigueRow(String label, double value) {
             child: SizedBox.expand(
               // 🔥 CLAVE
               child: BodyHeatmap(
-  key: ValueKey(_heatmapSignature(_getDisplayHeatmap())),
-  heatmap: _getDisplayHeatmap(),
-  showBack: showBack,
-),
-
+                key: ValueKey(_heatmapSignature(_getDisplayHeatmap())),
+                heatmap: _getDisplayHeatmap(),
+                showBack: showBack,
+              ),
             ),
           ),
         ),
@@ -631,39 +940,35 @@ Widget _fatigueRow(String label, double value) {
     );
   }
 
-
   Map<Muscle, double> _getDisplayHeatmap() {
-  if (fatigueViewMode == MuscleViewMode.muscle) {
-    return heatmap;
-  }
-
-  final Map<Muscle, double> groupedHeatmap = {};
-
-  final groups = fatigueViewMode == MuscleViewMode.anatomical
-      ? anatomicalGroups
-      : functionalGroups;
-
-  for (final entry in groups.entries) {
-    final muscles = entry.value;
-
-    final values = muscles
-        .map((m) => heatmap[m] ?? 0)
-        .where((v) => v >= 4)
-        .toList();
-
-    if (values.isEmpty) continue;
-
-    final avg =
-        values.reduce((a, b) => a + b) / values.length;
-
-    for (final m in muscles) {
-      groupedHeatmap[m] = avg;
+    if (fatigueViewMode == MuscleViewMode.muscle) {
+      return heatmap;
     }
+
+    final Map<Muscle, double> groupedHeatmap = {};
+
+    final groups =
+        fatigueViewMode == MuscleViewMode.anatomical
+            ? anatomicalGroups
+            : functionalGroups;
+
+    for (final entry in groups.entries) {
+      final muscles = entry.value;
+
+      final values =
+          muscles.map((m) => heatmap[m] ?? 0).where((v) => v >= 4).toList();
+
+      if (values.isEmpty) continue;
+
+      final avg = values.reduce((a, b) => a + b) / values.length;
+
+      for (final m in muscles) {
+        groupedHeatmap[m] = avg;
+      }
+    }
+
+    return groupedHeatmap;
   }
-
-  return groupedHeatmap;
-}
-
 
   // ======================================================
   // ⚡ ACCIONES
@@ -672,72 +977,182 @@ Widget _fatigueRow(String label, double value) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Tu cuenta", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Text(
+          "Tu cuenta",
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
         const SizedBox(height: 12),
         Card(
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             children: [
               ListTile(
-                dense: true,
-                visualDensity: VisualDensity.compact,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                leading: const Icon(Icons.emoji_events_outlined, color: Colors.orange, size: 22),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                leading: const Icon(
+                  Icons.emoji_events_outlined,
+                  color: Colors.orange,
+                  size: 22,
+                ),
                 title: const Text("Mis Logros"),
                 trailing: const Icon(Icons.chevron_right, size: 20),
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AchievementsScreen())), 
+                onTap:
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AchievementsScreen(),
+                      ),
+                    ),
               ),
               const Divider(height: 1),
               ListTile(
-                dense: true,
-                visualDensity: VisualDensity.compact,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                leading: const Icon(Icons.history, color: Colors.blue, size: 22),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                leading: const Icon(
+                  Icons.history,
+                  color: Colors.blue,
+                  size: 22,
+                ),
                 title: const Text("Historial"),
                 trailing: const Icon(Icons.chevron_right, size: 20),
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const MyWorkoutsScreen()),
+                    MaterialPageRoute(
+                      builder:
+                          (_) => MyWorkoutsScreen(
+                            initialAthleteId: selectedAthleteId,
+                            initialAthleteName: selectedAthleteName,
+                          ),
+                    ),
                   );
-                },
-              ),
-              const Divider(height: 1),
-              ListTile(
-                dense: true,
-                visualDensity: VisualDensity.compact,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                leading: const Icon(Icons.analytics_outlined, color: Colors.purple, size: 22),
-                title: const Text("Auditoría"),
-                trailing: const Icon(Icons.chevron_right, size: 20),
-                onTap: lastAuditSteps == null ? null : () => _showAudit(lastAuditSteps!),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                dense: true,
-                visualDensity: VisualDensity.compact,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                leading: const Icon(Icons.logout, color: Colors.red, size: 22),
-                title: const Text("Salir", style: TextStyle(color: Colors.red)),
-                onTap: () async {
-                  await FirebaseAuth.instance.signOut();
-                  if (!mounted) return;
-                  Navigator.of(context).popUntil((route) => route.isFirst);
                 },
               ),
             ],
           ),
         ),
+        const SizedBox(height: 16),
+        // Separado de la navegación y con confirmación: antes estaba entre
+        // "Historial" y "Auditoría" y se tocaba por error.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+              minimumSize: const Size(48, 48),
+            ),
+            icon: const Icon(Icons.logout),
+            label: const Text("Cerrar sesión"),
+            onPressed: _confirmSignOut,
+          ),
+        ),
       ],
     );
   }
+
+  Future<void> _confirmSignOut() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text("¿Cerrar sesión?"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text("Cancelar"),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text("Cerrar sesión"),
+              ),
+            ],
+          ),
+    );
+    if (ok != true) return;
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  Future<void> _generatePdf() async {
+    final currentUser = user;
+    if (currentUser == null || !mounted) return;
+
+    final now = DateTime.now();
+    final initialStartMonth = now.month == 1 ? 1 : now.month - 1;
+    final initialStartDay = now.day.clamp(
+      1,
+      DateUtils.getDaysInMonth(now.year, initialStartMonth),
+    );
+    final initialRange = DateTimeRange(
+      start: DateTime(now.year, initialStartMonth, initialStartDay),
+      end: now,
+    );
+
+    debugPrint(
+      '[ProfileScreen][_generatePdf] Abriendo picker '
+      'athleteId=${selectedAthleteId ?? currentUser.uid} '
+      'athleteName=$selectedAthleteName '
+      'initialStart=${initialRange.start.toIso8601String()} '
+      'initialEnd=${initialRange.end.toIso8601String()}',
+    );
+
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: now,
+      initialDateRange: initialRange,
+      helpText: 'Selecciona el período del informe',
+      saveText: 'Generar PDF',
+      locale: const Locale('es'),
+      builder: (context, child) {
+        if (child == null) {
+          debugPrint(
+            '[ProfileScreen][_generatePdf] showDateRangePicker builder recibió child=null',
+          );
+          return const SizedBox.shrink();
+        }
+
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(
+              context,
+            ).colorScheme.copyWith(primary: AppColors.accent),
+          ),
+          child: child,
+        );
+      },
+    );
+
+    debugPrint(
+      '[ProfileScreen][_generatePdf] Picker cerrado '
+      'rangeStart=${range?.start.toIso8601String()} '
+      'rangeEnd=${range?.end.toIso8601String()}',
+    );
+
+    if (range == null || !mounted) return;
+
+    await AthleteReportService.generate(
+      context: context,
+      athleteId: selectedAthleteId ?? currentUser.uid,
+      athleteName: selectedAthleteName,
+      heatmap: heatmap,
+      range: range,
+    );
+  }
+
   void _showAudit(List<FatigueRecalculationStep> steps) {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => FatigueAuditScreen(steps: steps),
-    ),
-  );
-}
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (_) => FatigueAuditScreen(
+              steps: steps,
+              athleteName: selectedAthleteName,
+            ),
+      ),
+    );
+  }
 }

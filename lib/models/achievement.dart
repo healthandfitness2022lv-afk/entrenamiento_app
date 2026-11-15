@@ -1,11 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum AchievementCategory {
-  constancy,
-  volume,
-  strength,
-  intelligence,
-}
+enum AchievementCategory { constancy, volume, strength, intelligence }
 
 class Achievement {
   final String id;
@@ -92,7 +87,8 @@ final List<Achievement> achievementsCatalog = [
   const Achievement(
     id: "workouts_l6",
     title: "Inmortal (Nivel 6)",
-    description: "Alcanza los 150 entrenamientos completados. ¡Tu estilo de vida!",
+    description:
+        "Alcanza los 150 entrenamientos completados. ¡Tu estilo de vida!",
     category: AchievementCategory.constancy,
     icon: Icons.diamond,
     targetValue: 150,
@@ -235,14 +231,16 @@ final List<Achievement> achievementsCatalog = [
   const Achievement(
     id: "rpe_maestro",
     title: "Francotirador del Esfuerzo",
-    description: "Termina una sesión usando RPE sin llegar nunca al fallo (RPE 10).",
+    description:
+        "Termina una sesión usando RPE sin llegar nunca al fallo (RPE 10).",
     category: AchievementCategory.intelligence,
     icon: Icons.my_location,
   ),
   const Achievement(
     id: "efficiency_master",
     title: "Eficiencia Pura",
-    description: "Registra un entrenamiento con un bloque que tenga un RPE promedio bajo (<= 6) moviendo más de 2000 kg.",
+    description:
+        "Registra un entrenamiento con un bloque que tenga un RPE promedio bajo (<= 6) moviendo más de 2000 kg.",
     category: AchievementCategory.intelligence,
     icon: Icons.battery_charging_full,
   ),
@@ -397,7 +395,8 @@ final List<Achievement> achievementsCatalog = [
   const Achievement(
     id: 'avg_rpe_l4',
     title: 'Modo Bestia (Nivel 4)',
-    description: 'RPE promedio ≥ 8.0 en toda la sesión. Ferozmente concentrado.',
+    description:
+        'RPE promedio ≥ 8.0 en toda la sesión. Ferozmente concentrado.',
     category: AchievementCategory.intelligence,
     icon: Icons.bolt,
     targetValue: 8.0,
@@ -408,7 +407,8 @@ final List<Achievement> achievementsCatalog = [
   const Achievement(
     id: 'avg_rpe_l5',
     title: 'Al Borde del Fallo (Nivel 5)',
-    description: 'Sesión con RPE promedio ≥ 9.0. Entrenamiento de alto rendimiento máximo.',
+    description:
+        'Sesión con RPE promedio ≥ 9.0. Entrenamiento de alto rendimiento máximo.',
     category: AchievementCategory.intelligence,
     icon: Icons.whatshot,
     targetValue: 9.0,

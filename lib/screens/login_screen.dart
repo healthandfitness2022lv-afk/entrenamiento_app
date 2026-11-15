@@ -40,11 +40,11 @@ class _LoginScreenState extends State<LoginScreen> {
               .collection('users')
               .doc(user.uid)
               .set({
-            'name': nameController.text.trim(),
-            'email': user.email,
-            'role': 'athlete',
-            'createdAt': FieldValue.serverTimestamp(),
-          });
+                'name': nameController.text.trim(),
+                'email': user.email,
+                'role': 'athlete',
+                'createdAt': FieldValue.serverTimestamp(),
+              });
         }
       } else {
         await FirebaseAuth.instance.signInWithEmailAndPassword(
@@ -60,8 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -103,16 +102,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 12),
                     Text(
                       isRegister ? "Crear cuenta" : "Bienvenido",
-                      style: theme.textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.bold),
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       isRegister
                           ? "Regístrate para comenzar"
                           : "Inicia sesión para continuar",
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: Colors.grey),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey,
+                      ),
                     ),
 
                     const SizedBox(height: 24),
@@ -156,19 +157,20 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: isLoading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
+                        child:
+                            isLoading
+                                ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                                : Text(
+                                  isRegister ? "Registrarse" : "Ingresar",
+                                  style: const TextStyle(fontSize: 16),
                                 ),
-                              )
-                            : Text(
-                                isRegister ? "Registrarse" : "Ingresar",
-                                style: const TextStyle(fontSize: 16),
-                              ),
                       ),
                     ),
 
@@ -216,9 +218,7 @@ class _LoginScreenState extends State<LoginScreen> {
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
     );

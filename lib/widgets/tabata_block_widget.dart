@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'exercise_note.dart';
 import '../services/tabata_timer_service.dart';
 
 class TabataBlockWidget extends StatelessWidget {
@@ -8,8 +9,7 @@ class TabataBlockWidget extends StatelessWidget {
 
   final TabataTimerService tabataTimer;
 
-  final void Function(int blockIndex, Map<String, dynamic> block)
-      onStartTabata;
+  final void Function(int blockIndex, Map<String, dynamic> block) onStartTabata;
 
   final VoidCallback onSkipTabata;
 
@@ -34,8 +34,7 @@ class TabataBlockWidget extends StatelessWidget {
 
     final bool started = tabataTimer.isStarted(index);
     final bool completed = tabataTimer.isCompleted(index);
-    final Map<String, int>? rpeResults =
-        tabataTimer.getRpeResults(index);
+    final Map<String, int>? rpeResults = tabataTimer.getRpeResults(index);
 
     return Card(
       elevation: 2,
@@ -74,29 +73,32 @@ class TabataBlockWidget extends StatelessWidget {
                   ],
                 ),
             ] else ...[
-              ...exercises.map((e) => Text("• ${e['name']}")),
+              for (final e in exercises) ...[
+                Text("• ${e['name']}"),
+                ExerciseNote(
+                  e['notes'],
+                  padding: const EdgeInsets.only(left: 12, top: 2, bottom: 4),
+                ),
+              ],
             ],
 
             const SizedBox(height: 16),
 
             Align(
               alignment: Alignment.centerRight,
-              child: completed
-                  ? OutlinedButton.icon(
-                      icon: const Icon(Icons.replay),
-                      label: const Text("Repetir Tabata"),
-                      onPressed: () =>
-                          onStartTabata(index, block),
-                    )
-                  : ElevatedButton(
-                      onPressed: () =>
-                          onStartTabata(index, block),
-                      child: Text(
-                        started
-                            ? "Continuar Tabata"
-                            : "Iniciar Tabata",
+              child:
+                  completed
+                      ? OutlinedButton.icon(
+                        icon: const Icon(Icons.replay),
+                        label: const Text("Repetir Tabata"),
+                        onPressed: () => onStartTabata(index, block),
+                      )
+                      : ElevatedButton(
+                        onPressed: () => onStartTabata(index, block),
+                        child: Text(
+                          started ? "Continuar Tabata" : "Iniciar Tabata",
+                        ),
                       ),
-                    ),
             ),
           ],
         ),
@@ -104,8 +106,6 @@ class TabataBlockWidget extends StatelessWidget {
     );
   }
 }
-
-
 
 class TabataOverlayWidget extends StatelessWidget {
   final TabataTimerService tabataTimer;
@@ -119,8 +119,7 @@ class TabataOverlayWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isWork =
-        tabataTimer.phase == TabataPhase.work;
+    final bool isWork = tabataTimer.phase == TabataPhase.work;
 
     return Positioned.fill(
       child: Container(
@@ -138,9 +137,7 @@ class TabataOverlayWidget extends StatelessWidget {
                 children: [
                   const Text(
                     "TABATA",
-                    style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 12),
 
@@ -155,14 +152,12 @@ class TabataOverlayWidget extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.bold,
-                      color:
-                          isWork ? Colors.red : Colors.green,
+                      color: isWork ? Colors.red : Colors.green,
                     ),
                   ),
                   const SizedBox(height: 12),
 
-                  Text(
-                      "${tabataTimer.elapsed} / ${tabataTimer.total} s"),
+                  Text("${tabataTimer.elapsed} / ${tabataTimer.total} s"),
 
                   const SizedBox(height: 20),
 

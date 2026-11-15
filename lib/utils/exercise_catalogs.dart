@@ -37,7 +37,6 @@ const List<String> muscleCatalog = [
   "Serrato anterior",
 ];
 
-
 const List<String> equipmentCatalog = [
   "Peso corporal",
   "Barra",
@@ -53,61 +52,51 @@ const List<String> equipmentCatalog = [
   "Barra fija",
   "Barra Z",
   "Paralelas",
+  "Rack",
+  "Banco plano",
+  "Banco inclinado",
+  "Safety bar",
+  "Trap bar",
+  "Landmine",
+  "Máquina Smith",
+  "Hack squat",
+  "Sentadilla pendular",
+  "Belt squat",
+  "Prensa horizontal",
+  "Prensa 45 grados",
+  "Extensión de cuádriceps",
+  "Curl femoral sentado",
+  "Curl femoral tumbado",
+  "Curl femoral de pie",
+  "Máquina de aductores",
+  "Máquina de abductores",
+  "Press de pecho selectorizado",
+  "Press de pecho con discos",
+  "Press de hombro selectorizado",
+  "Remo sentado",
+  "Remo pecho apoyado",
+  "Jalón con discos",
+  "Polea doble",
+  "Polea ajustable",
+  "Barra de polea",
+  "Deslizadores",
+  "Disco",
+  "Cinturón de lastre",
+  "Máquina de dominadas asistidas",
+  "Curl de bíceps selectorizado",
+  "Extensión de tríceps selectorizada",
+  "Elevación lateral selectorizada",
+  "Hip thrust con discos",
+  "Pullover selectorizado",
+  "Pantorrilla de pie selectorizada",
+  "Pantorrilla sentada",
+  "Prensa de piernas",
+  "TRX",
+  "Assault Bike",
+  "Bicicleta estática",
+  "Battle Rope",
+  "Rueda abdominal",
+  "Slam ball",
 ];
 
-const List<String> exerciseTypeCatalog = [
-  "Fuerza",
-  "Hipertrofia",
-  "Potencia",
-  "weightlifting",
-  "Metabólico",
-  "Cardio",
-  "Movilidad",
-  "Pliometría",
-  "Isometría",
-  "Calistenia"
-];
-
-const Map<String, double> exerciseTypeFactor = {
-  "Fuerza": 1.3,
-  "weightlifting": 1.45, // Subido por demanda técnica
-  "Hipertrofia": 1.0,
-  "Potencia": 1.15,
-  "Pliometría": 0.85,
-  "Metabólico": 0.9,
-  "Calistenia": 1.25, // Subido según estimación (control corporal/tensión)
-  "Isometría": 0.75,
-  "Movilidad": 0.4,
-  "Cardio": 0.35,
-};
-
-const Map<String, double> equipmentFactor = {
-  "Barra": 1.2,        // Mayor demanda estabilizadora y neural
-  "Mancuernas": 1.1,
-  "Kettlebell": 1.1,
-  "Paralelas": 1.1,
-  "Barra fija": 1.1,
-  "Polea alta": 0.9,   // Guía de movimiento reduce carga estabilizadora
-  "Polea baja": 0.9,
-  "Polea": 0.9,
-  "Cuerda": 0.85,
-  "Máquina": 0.8,
-  "Peso corporal": 1.0,
-};
-
-double equipmentFactorOf(dynamic equipment) {
-  if (equipment == null) return 1.0;
-  
-  if (equipment is List) {
-    if (equipment.isEmpty) return 1.0;
-    // Si viene como lista, tomamos el factor del equipo principal (el primero)
-    final firstEq = equipment.first.toString();
-    return equipmentFactor[firstEq] ?? 1.0;
-  }
-  
-  return equipmentFactor[equipment.toString()] ?? 1.0;
-}
-
-double exerciseTypeFactorOf(String? type) {
-  return exerciseTypeFactor[type] ?? 1.0;
-}
+// Los tipos de ejercicio y sus multiplicadores ahora se gestionan dinámicamente desde Firestore (colección 'exercise_folders')

@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'add_routine_screen.dart';
 import 'routine_details_screen.dart';
 
-
 class RoutinesScreen extends StatelessWidget {
   const RoutinesScreen({super.key});
 
@@ -12,10 +11,11 @@ class RoutinesScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text("Rutinas")),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('routines')
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
+        stream:
+            FirebaseFirestore.instance
+                .collection('routines')
+                .orderBy('createdAt', descending: true)
+                .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -36,14 +36,13 @@ class RoutinesScreen extends StatelessWidget {
                 subtitle: Text(r['description'] ?? ''),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => RoutineDetailsScreen(routine: r),
-    ),
-  );
-},
-
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RoutineDetailsScreen(routine: r),
+                    ),
+                  );
+                },
               );
             },
           );

@@ -39,15 +39,18 @@ class DescendingSeriesBlockWidget extends StatelessWidget {
 
     final schema = List<int>.from(block['schema'] ?? []);
     final firstName = normalizeExerciseName(exercises.first['name']);
-    final int roundCount = seriesData["$index-$firstName"]?.length ?? schema.length;
+    final int roundCount =
+        seriesData["$index-$firstName"]?.length ?? schema.length;
 
     return Column(
       children: List.generate(roundCount, (i) {
-        final roundReps = schema.length > i 
-            ? schema[i] 
-            : (seriesData["$index-$firstName"] != null && i < seriesData["$index-$firstName"]!.length 
-                ? seriesData["$index-$firstName"]![i]['reps'] 
-                : 0);
+        final roundReps =
+            schema.length > i
+                ? schema[i]
+                : (seriesData["$index-$firstName"] != null &&
+                        i < seriesData["$index-$firstName"]!.length
+                    ? seriesData["$index-$firstName"]![i]['reps']
+                    : 0);
 
         return Card(
           margin: const EdgeInsets.only(top: 12),
@@ -77,20 +80,24 @@ class DescendingSeriesBlockWidget extends StatelessWidget {
                   final set = sets[i];
                   final done = set['done'] == true;
                   final wList = seriesWeightCtrl[key];
-                  final weightCtrl = (wList != null && i < wList.length) ? wList[i] : null;
+                  final weightCtrl =
+                      (wList != null && i < wList.length) ? wList[i] : null;
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
-                      color: done
-                          ? Colors.green.withOpacity(0.15)
-                          : Colors.grey.withOpacity(0.05),
+                      color:
+                          done
+                              ? Colors.green.withOpacity(0.15)
+                              : Colors.grey.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: done
-                            ? Colors.green
-                            : Colors.grey.withOpacity(0.3),
+                        color:
+                            done ? Colors.green : Colors.grey.withOpacity(0.3),
                       ),
                     ),
                     child: Row(
@@ -102,14 +109,19 @@ class DescendingSeriesBlockWidget extends StatelessWidget {
                               Expanded(
                                 child: Text(
                                   name,
-                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                               IconButton(
                                 constraints: const BoxConstraints(),
                                 padding: EdgeInsets.zero,
                                 iconSize: 18,
-                                icon: const Icon(Icons.info_outline, color: Colors.blueGrey),
+                                icon: const Icon(
+                                  Icons.info_outline,
+                                  color: Colors.blueGrey,
+                                ),
                                 onPressed: () => onInfoPressed(ex),
                               ),
                             ],
@@ -123,11 +135,16 @@ class DescendingSeriesBlockWidget extends StatelessWidget {
                           width: 70,
                           child: TextField(
                             controller: weightCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
                             decoration: const InputDecoration(
                               labelText: "kg",
                               isDense: true,
-                              contentPadding: EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                              contentPadding: EdgeInsets.symmetric(
+                                vertical: 4,
+                                horizontal: 8,
+                              ),
                             ),
                             onChanged: (_) => onStateChanged(),
                           ),
@@ -147,7 +164,10 @@ class DescendingSeriesBlockWidget extends StatelessWidget {
                                 10,
                                 (r) => DropdownMenuItem(
                                   value: r + 1,
-                                  child: Text("R${r + 1}", style: const TextStyle(fontSize: 13)),
+                                  child: Text(
+                                    "R${r + 1}",
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
                                 ),
                               ),
                               onChanged: (v) {
@@ -162,19 +182,22 @@ class DescendingSeriesBlockWidget extends StatelessWidget {
 
                         // Checkbox
                         Checkbox(
-                          value: done,
-                          visualDensity: VisualDensity.compact,
-                          onChanged: (v) {
-                            if (v == true) HapticFeedback.lightImpact();
-                            set['done'] = v ?? false;
-                            onStateChanged();
-                          },
-                        )
-                        .animate(target: done ? 1 : 0)
-                        .shimmer(duration: 400.ms, color: Colors.greenAccent)
-                        .scaleXY(end: 1.2, duration: 150.ms)
-                        .then()
-                        .scaleXY(end: 1.0, duration: 150.ms),
+                              value: done,
+                              visualDensity: VisualDensity.compact,
+                              onChanged: (v) {
+                                if (v == true) HapticFeedback.lightImpact();
+                                set['done'] = v ?? false;
+                                onStateChanged();
+                              },
+                            )
+                            .animate(target: done ? 1 : 0)
+                            .shimmer(
+                              duration: 400.ms,
+                              color: Colors.greenAccent,
+                            )
+                            .scaleXY(end: 1.2, duration: 150.ms)
+                            .then()
+                            .scaleXY(end: 1.0, duration: 150.ms),
                       ],
                     ),
                   );

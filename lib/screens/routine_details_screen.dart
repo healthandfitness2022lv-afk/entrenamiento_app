@@ -4,19 +4,15 @@ import 'add_routine_screen.dart';
 import '../models/muscle_catalog.dart';
 import '../widgets/body_heatmap.dart';
 import '../widgets/routine_view.dart';
+import '../theme/app_theme.dart';
 
 class RoutineDetailsScreen extends StatefulWidget {
   final DocumentSnapshot routine;
 
-
-  const RoutineDetailsScreen({
-    super.key,
-    required this.routine,
-  });
+  const RoutineDetailsScreen({super.key, required this.routine});
 
   @override
-  State<RoutineDetailsScreen> createState() =>
-      _RoutineDetailsScreenState();
+  State<RoutineDetailsScreen> createState() => _RoutineDetailsScreenState();
 }
 
 class _RoutineDetailsScreenState extends State<RoutineDetailsScreen> {
@@ -42,13 +38,10 @@ class _RoutineDetailsScreenState extends State<RoutineDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     if (routineData == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final blocks =
-        List<Map<String, dynamic>>.from(routineData!['blocks']);
+    final blocks = List<Map<String, dynamic>>.from(routineData!['blocks']);
     final rawHeatmap = _buildRawMuscleHeatmap(blocks);
     final muscleHeatmap = _convertToMuscleHeatmap(rawHeatmap);
 
@@ -66,23 +59,14 @@ class _RoutineDetailsScreenState extends State<RoutineDetailsScreen> {
                   _muscleImpactSection(context, muscleHeatmap),
                   const SizedBox(height: 32),
                 ],
-                RoutineView(
-  routine: routineData!,
-  compact: false,
-),
-
+                RoutineView(routine: routineData!, compact: false),
               ],
             ),
 
             // =============================
             // HEADER COMPACTO
             // =============================
-            Positioned(
-              top: 8,
-              left: 8,
-              right: 8,
-              child: _topHeader(context),
-            ),
+            Positioned(top: 8, left: 8, right: 8, child: _topHeader(context)),
           ],
         ),
       ),
@@ -113,10 +97,9 @@ class _RoutineDetailsScreenState extends State<RoutineDetailsScreen> {
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(fontWeight: FontWeight.bold),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
           ),
           const SizedBox(width: 8),
@@ -126,10 +109,11 @@ class _RoutineDetailsScreenState extends State<RoutineDetailsScreen> {
               await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => AddRoutineScreen(
-                    routineId: routineRef.id,
-                    initialData: routineData,
-                  ),
+                  builder:
+                      (_) => AddRoutineScreen(
+                        routineId: routineRef.id,
+                        initialData: routineData,
+                      ),
                 ),
               );
 
@@ -142,10 +126,7 @@ class _RoutineDetailsScreenState extends State<RoutineDetailsScreen> {
     );
   }
 
-  Widget _iconButton({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
+  Widget _iconButton({required IconData icon, required VoidCallback onTap}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
@@ -174,10 +155,7 @@ class _RoutineDetailsScreenState extends State<RoutineDetailsScreen> {
           const SizedBox(height: 12),
           SizedBox(
             height: 260,
-            child: BodyHeatmap(
-              heatmap: heatmap,
-              showBack: false,
-            ),
+            child: BodyHeatmap(heatmap: heatmap, showBack: false),
           ),
         ],
       ),
@@ -204,26 +182,21 @@ class _RoutineDetailsScreenState extends State<RoutineDetailsScreen> {
     return heatmap;
   }
 
-  Map<Muscle, double> _convertToMuscleHeatmap(
-    Map<String, double> raw,
-  ) {
+  Map<Muscle, double> _convertToMuscleHeatmap(Map<String, double> raw) {
     final Map<Muscle, double> result = {};
     for (final entry in raw.entries) {
       try {
-        final muscle =
-            Muscle.values.firstWhere((m) => m.name == entry.key);
+        final muscle = Muscle.values.firstWhere((m) => m.name == entry.key);
         result[muscle] = entry.value;
       } catch (_) {}
     }
     return result;
   }
 
-  
-
   Widget _sectionTitle(String text, IconData icon) {
     return Row(
       children: [
-        Icon(icon, size: 18, color: const Color(0xFF39FF14)),
+        Icon(icon, size: 18, color: AppColors.accent),
         const SizedBox(width: 6),
         Text(
           text.toUpperCase(),
@@ -248,5 +221,4 @@ class _RoutineDetailsScreenState extends State<RoutineDetailsScreen> {
       ),
     );
   }
-
 }

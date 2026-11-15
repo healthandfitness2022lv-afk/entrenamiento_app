@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
+import 'exercise_note.dart';
+import '../utils/weight_input.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../theme/app_theme.dart';
 
 class SeriesBlockWidget extends StatelessWidget {
   final int index;
   final Map<String, dynamic> block;
   final bool expanded;
-  final void Function(int blockIndex, String exercise, bool value)
-    onPerSideChanged;
+
   final void Function(String exercise, int reps) onRepsSubmitted;
   final Map<String, List<Map<String, dynamic>>> seriesData;
   final Map<String, List<TextEditingController>> seriesRepsCtrl;
@@ -22,38 +24,42 @@ class SeriesBlockWidget extends StatelessWidget {
   final void Function(int) onAddExercise;
   final VoidCallback onStateChanged;
 
+  /// Cambia la variante ejecutada de este ejercicio puntual (ej. "el equipo
+  /// planificado está ocupado, voy a hacer otra variante"), sin esperar a
+  /// completar todo el bloque. Opcional para no romper otros llamadores.
+  final void Function(int blockIndex, Map<String, dynamic> exercise)?
+  onChangeVariant;
 
   final Widget Function(String, int) suggestedWeightText;
   final Widget Function(String, double) suggestedRepsText;
 
- const SeriesBlockWidget({
-  super.key,
-  required this.index,
-  required this.block,
-  required this.expanded,
-  required this.seriesData,
-  required this.seriesRepsCtrl,
-  required this.seriesWeightCtrl,
-  required this.normalizeExerciseName,
-  required this.getEquipment,
-  required this.isPerSide,
-  required this.onInfoPressed,
-  required this.onDeleteExercise,
-  required this.onAddExercise,
-  required this.suggestedWeightText,
-  required this.suggestedRepsText,
-  required this.onRepsSubmitted,
-  required this.onStateChanged,
-  required this.onPerSideChanged,
-});
+  const SeriesBlockWidget({
+    super.key,
+    required this.index,
+    required this.block,
+    required this.expanded,
+    required this.seriesData,
+    required this.seriesRepsCtrl,
+    required this.seriesWeightCtrl,
+    required this.normalizeExerciseName,
+    required this.getEquipment,
+    required this.isPerSide,
+    required this.onInfoPressed,
+    required this.onDeleteExercise,
+    required this.onAddExercise,
+    required this.suggestedWeightText,
+    required this.suggestedRepsText,
+    required this.onRepsSubmitted,
+    required this.onStateChanged,
+    this.onChangeVariant,
+  });
   @override
   Widget build(BuildContext context) {
     if (!expanded) return const SizedBox();
 
     return Column(
       children: [
-        for (final ex in block['exercises'])
-          _buildExercise(context, ex),
+        for (final ex in block['exercises']) _buildExercise(context, ex),
 
         const SizedBox(height: 16),
 
@@ -73,7 +79,6 @@ class SeriesBlockWidget extends StatelessWidget {
     final String name = normalizeExerciseName(ex['name']);
     final String key = "$index-$name";
 
-
     if (!seriesData.containsKey(key) ||
         seriesData[key]!.isEmpty ||
         !seriesRepsCtrl.containsKey(key) ||
@@ -81,66 +86,64 @@ class SeriesBlockWidget extends StatelessWidget {
       return const SizedBox();
     }
 
-    final bool isTimeBased =
-        seriesData[key]![0]['valueType'] == 'time';
+    final bool isTimeBased = seriesData[key]![0]['valueType'] == 'time';
 
     return Column(
       children: [
         const SizedBox(height: 12),
-        
 
         Row(
           children: [
             Expanded(
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
-  children: [
-    Expanded(
-      child: Text(
-        name,
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 16,
-        ),
-      ),
-    ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
 
-    SizedBox(
-      width: 22,
-      height: 22,
-      child: Checkbox(
-        value: isPerSide(ex),
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        onChanged: (v) {
-          onPerSideChanged(index, name, v == true);
-        },
-      ),
-    ),
+                      if (isPerSide(ex))
+                        const Text(
+                          " (L)",
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.info,
+                          ),
+                        ),
+                    ],
+                  ),
 
-    const SizedBox(width: 4),
+                  if (getEquipment(ex) != null)
+                    Text(
+                      getEquipment(ex)!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ExerciseNote(
+                    ex['notes'],
+                    padding: const EdgeInsets.only(top: 4),
+                  ),
+                ],
+              ),
+            ),
 
-    const Text(
-      "L",
-      style: TextStyle(fontSize: 12),
-    ),
-  ],
-),
-
-      if (getEquipment(ex) != null)
-        Text(
-          getEquipment(ex)!,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey.shade600,
-          ),
-        ),
-    ],
-  ),
-),
-
+            if (onChangeVariant != null)
+              IconButton(
+                icon: const Icon(Icons.swap_horiz),
+                tooltip: "Cambiar variante (equipo ocupado)",
+                onPressed: () => onChangeVariant!(index, ex),
+              ),
             IconButton(
               icon: const Icon(Icons.info_outline),
               onPressed: () => onInfoPressed(ex),
@@ -151,7 +154,6 @@ class SeriesBlockWidget extends StatelessWidget {
             ),
           ],
         ),
-        
 
         const SizedBox(height: 8),
 
@@ -166,26 +168,14 @@ class SeriesBlockWidget extends StatelessWidget {
           children: [
             TableRow(
               children: [
-                const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Text("Serie"),
-                ),
+                const Padding(padding: EdgeInsets.all(4), child: Text("Serie")),
                 Padding(
                   padding: const EdgeInsets.all(4),
                   child: Text(isTimeBased ? "Tiempo (s)" : "Reps"),
                 ),
-                const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Text("Peso"),
-                ),
-                const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Text("RPE"),
-                ),
-                const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Text("✔"),
-                ),
+                const Padding(padding: EdgeInsets.all(4), child: Text("Peso")),
+                const Padding(padding: EdgeInsets.all(4), child: Text("RPE")),
+                const Padding(padding: EdgeInsets.all(4), child: Text("✔")),
               ],
             ),
 
@@ -195,149 +185,145 @@ class SeriesBlockWidget extends StatelessWidget {
         ),
         const SizedBox(height: 8),
 
-Row(
-  mainAxisAlignment: MainAxisAlignment.end,
-  children: [
-    IconButton(
-      icon: const Icon(Icons.remove_circle_outline),
-      onPressed: () {
-        if (seriesData[key]!.length > 1) {
-          seriesData[key]!.removeLast();
-          seriesRepsCtrl[key]!.removeLast();
-          seriesWeightCtrl[key]!.removeLast();
-          onStateChanged();
-        }
-      },
-    ),
-    IconButton(
-      icon: const Icon(Icons.add_circle_outline),
-      onPressed: () {
-        seriesData[key]!.add({
-          'rpe': 7,
-          'done': false,
-          'valueType': seriesData[key]![0]['valueType'],
-        });
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.remove_circle_outline),
+              onPressed: () {
+                if (seriesData[key]!.length > 1) {
+                  seriesData[key]!.removeLast();
+                  seriesRepsCtrl[key]!.removeLast();
+                  seriesWeightCtrl[key]!.removeLast();
+                  onStateChanged();
+                }
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: () {
+                // La serie nueva parte de los valores de la anterior (lo
+                // habitual es repetir reps/peso), sin marcarse como hecha.
+                final previous = seriesData[key]!.last;
+                seriesData[key]!.add({
+                  'rpe': previous['rpe'] ?? 7,
+                  'done': false,
+                  'valueType': seriesData[key]![0]['valueType'],
+                });
 
-        seriesRepsCtrl[key]!.add(TextEditingController());
-        seriesWeightCtrl[key]!.add(TextEditingController());
+                seriesRepsCtrl[key]!.add(
+                  TextEditingController(text: seriesRepsCtrl[key]!.last.text),
+                );
+                seriesWeightCtrl[key]!.add(
+                  TextEditingController(text: seriesWeightCtrl[key]!.last.text),
+                );
 
-        onStateChanged();
-      },
-    ),
-  ],
-),
-
+                onStateChanged();
+              },
+            ),
+          ],
+        ),
       ],
     );
   }
 
-  TableRow _buildRow(
-  BuildContext context,
-  String key,
-  String name,
-  int i,
-) {
-  return TableRow(
-    children: [
-      // 🔢 Número de serie
-      Padding(
-        padding: const EdgeInsets.all(4),
-        child: Text("${i + 1}"),
-      ),
+  TableRow _buildRow(BuildContext context, String key, String name, int i) {
+    return TableRow(
+      children: [
+        // 🔢 Número de serie
+        Padding(padding: const EdgeInsets.all(4), child: Text("${i + 1}")),
 
-      // 🔥 REPS + SUGERENCIA DE PESO
-      Padding(
-        padding: const EdgeInsets.all(4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: seriesRepsCtrl[key]![i],
-              keyboardType: TextInputType.number,
-              onChanged: (value) {
-                final reps = int.tryParse(value);
+        // 🔥 REPS + SUGERENCIA DE PESO
+        Padding(
+          padding: const EdgeInsets.all(4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: seriesRepsCtrl[key]![i],
+                keyboardType: TextInputType.number,
+                onChanged: (value) {
+                  final reps = int.tryParse(value);
 
-                if (reps != null && reps > 0) {
-                  onRepsSubmitted(name, reps);
-                }
+                  if (reps != null && reps > 0) {
+                    onRepsSubmitted(name, reps);
+                  }
 
-                onStateChanged();
-              },
-            ),
-            const SizedBox(height: 4),
+                  onStateChanged();
+                },
+              ),
+              const SizedBox(height: 4),
 
-            // 🔥 sugerencia peso según reps
-            suggestedWeightText(
-              name,
-              int.tryParse(seriesRepsCtrl[key]![i].text) ?? 0,
-            ),
-          ],
-        ),
-      ),
-
-      // 🏋️ PESO + SUGERENCIA DE REPS
-      Padding(
-        padding: const EdgeInsets.all(4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: seriesWeightCtrl[key]![i],
-              keyboardType: TextInputType.number,
-              onChanged: (value) {
-                onStateChanged();
-              },
-            ),
-            const SizedBox(height: 4),
-
-            // 🔥 sugerencia reps según peso
-            suggestedRepsText(
-              name,
-              double.tryParse(seriesWeightCtrl[key]![i].text) ?? 0,
-            ),
-          ],
-        ),
-      ),
-
-      // 🎯 RPE
-      Padding(
-        padding: const EdgeInsets.all(4),
-        child: DropdownButton<int>(
-          value: seriesData[key]![i]['rpe'],
-          isExpanded: true,
-          items: List.generate(
-            10,
-            (r) => DropdownMenuItem(
-              value: r + 1,
-              child: Text("${r + 1}"),
-            ),
+              // 🔥 sugerencia peso según reps
+              suggestedWeightText(
+                name,
+                int.tryParse(seriesRepsCtrl[key]![i].text) ?? 0,
+              ),
+            ],
           ),
-          onChanged: (v) {
-            seriesData[key]![i]['rpe'] = v!;
-            onStateChanged();
-          },
         ),
-      ),
 
-      // ✔ DONE
-      Padding(
-        padding: const EdgeInsets.all(4),
-        child: Checkbox(
-          value: seriesData[key]![i]['done'],
-          onChanged: (v) {
-            if (v == true) HapticFeedback.lightImpact();
-            seriesData[key]![i]['done'] = v!;
-            onStateChanged();
-          },
-        )
-        .animate(target: seriesData[key]![i]['done'] ? 1 : 0)
-        .shimmer(duration: 400.ms, color: Colors.greenAccent)
-        .scaleXY(end: 1.2, duration: 150.ms)
-        .then()
-        .scaleXY(end: 1.0, duration: 150.ms),
-      ),
-    ],
-  );
-}
-  
+        // 🏋️ PESO + SUGERENCIA DE REPS
+        Padding(
+          padding: const EdgeInsets.all(4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: seriesWeightCtrl[key]![i],
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                onChanged: (value) {
+                  onStateChanged();
+                },
+              ),
+              const SizedBox(height: 4),
+
+              // 🔥 sugerencia reps según peso
+              suggestedRepsText(
+                name,
+                parseWeight(seriesWeightCtrl[key]![i].text) ?? 0,
+              ),
+            ],
+          ),
+        ),
+
+        // 🎯 RPE
+        Padding(
+          padding: const EdgeInsets.all(4),
+          child: DropdownButton<int>(
+            value: seriesData[key]![i]['rpe'],
+            isExpanded: true,
+            items: List.generate(
+              10,
+              (r) => DropdownMenuItem(value: r + 1, child: Text("${r + 1}")),
+            ),
+            onChanged: (v) {
+              seriesData[key]![i]['rpe'] = v!;
+              onStateChanged();
+            },
+          ),
+        ),
+
+        // ✔ DONE
+        Padding(
+          padding: const EdgeInsets.all(4),
+          child: Checkbox(
+                value: seriesData[key]![i]['done'],
+                onChanged: (v) {
+                  if (v == true) HapticFeedback.lightImpact();
+                  seriesData[key]![i]['done'] = v!;
+                  onStateChanged();
+                },
+              )
+              .animate(target: seriesData[key]![i]['done'] ? 1 : 0)
+              .shimmer(duration: 400.ms, color: Colors.greenAccent)
+              .scaleXY(end: 1.2, duration: 150.ms)
+              .then()
+              .scaleXY(end: 1.0, duration: 150.ms),
+        ),
+      ],
+    );
+  }
 }

@@ -6,11 +6,7 @@ class AddRoutineScreen extends StatefulWidget {
   final String? routineId;
   final Map<String, dynamic>? initialData;
 
-  const AddRoutineScreen({
-    super.key,
-    this.routineId,
-    this.initialData,
-  });
+  const AddRoutineScreen({super.key, this.routineId, this.initialData});
 
   @override
   State<AddRoutineScreen> createState() => _AddRoutineScreenState();
@@ -24,9 +20,6 @@ class _AddRoutineScreenState extends State<AddRoutineScreen> {
 
   bool get isEdit => widget.routineId != null;
 
-  // ignore: unused_field
-  int? _editingIndex;
-
   // =========================
   // INIT
   // =========================
@@ -36,15 +29,13 @@ class _AddRoutineScreenState extends State<AddRoutineScreen> {
 
     if (widget.initialData != null) {
       nameController.text = widget.initialData!['name'] ?? '';
-      descriptionController.text =
-          widget.initialData!['description'] ?? '';
+      descriptionController.text = widget.initialData!['description'] ?? '';
 
-      final blocks =
-          List<Map<String, dynamic>>.from(widget.initialData!['blocks'] ?? []);
-
-      routineBlocks.addAll(
-        blocks.map((b) => Map<String, dynamic>.from(b)),
+      final blocks = List<Map<String, dynamic>>.from(
+        widget.initialData!['blocks'] ?? [],
       );
+
+      routineBlocks.addAll(blocks.map((b) => Map<String, dynamic>.from(b)));
     }
   }
 
@@ -73,10 +64,7 @@ class _AddRoutineScreenState extends State<AddRoutineScreen> {
     if (isEdit) {
       await col.doc(widget.routineId).update(data);
     } else {
-      await col.add({
-        ...data,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      await col.add({...data, 'createdAt': FieldValue.serverTimestamp()});
     }
 
     if (mounted) Navigator.pop(context);
@@ -86,191 +74,172 @@ class _AddRoutineScreenState extends State<AddRoutineScreen> {
   // BLOCK SUMMARY
   // =========================
   String _blockSummary(Map<String, dynamic> b) {
-  final title = (b["title"] ?? "").toString().trim();
-  final type = b["type"] ?? "Bloque";
+    final title = (b["title"] ?? "").toString().trim();
+    final type = b["type"] ?? "Bloque";
 
-  if (title.isNotEmpty) {
-    return title; // 👈 si tiene nombre personalizado lo usamos
+    if (title.isNotEmpty) {
+      return title; // 👈 si tiene nombre personalizado lo usamos
+    }
+
+    switch (type) {
+      case "Tabata":
+        return "Tabata ${b["work"]}/${b["rest"]} x ${b["rounds"]}";
+      case "Circuito":
+        return "Circuito ${b["rounds"]} rondas";
+      case "EMOM":
+        return "EMOM ${b["time"]}s x ${b["rounds"]}";
+      case "Series descendentes":
+        final schema = List<int>.from(b["schema"] ?? []);
+        return schema.join('-');
+      case "Buscar RM":
+        final rm = b["rm"] ?? 5;
+        return "Buscar ${rm}RM (${(b["exercises"] as List).length} ejercicios)";
+      case "Series":
+        return "Series (${(b["exercises"] as List).length} ejercicios)";
+      default:
+        return type;
+    }
   }
-
-  switch (type) {
-    case "Tabata":
-      return "Tabata ${b["work"]}/${b["rest"]} x ${b["rounds"]}";
-    case "Circuito":
-      return "Circuito ${b["rounds"]} rondas";
-    case "EMOM":
-      return "EMOM ${b["time"]}s x ${b["rounds"]}";
-    case "Series descendentes":
-  final schema = List<int>.from(b["schema"] ?? []);
-  return schema.join('-');
-    case "Buscar RM":
-      final rm = b["rm"] ?? 5;
-      return "Buscar ${rm}RM (${(b["exercises"] as List).length} ejercicios)";
-    case "Series":
-      return "Series (${(b["exercises"] as List).length} ejercicios)";
-    default:
-      return type;
-  }
-}
-
 
   // =========================
   // UI HELPERS
   // =========================
   void _openBlockEditorWithType(String type) async {
-  final newBlock = await Navigator.push<Map<String, dynamic>>(
-    context,
-    MaterialPageRoute(
-      builder: (_) => AddWorkoutScreen(
-        initialBlock: _emptyBlockForType(type),
+    final newBlock = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder:
+            (_) => AddWorkoutScreen(initialBlock: _emptyBlockForType(type)),
       ),
-    ),
-  );
+    );
 
-  if (newBlock == null) return;
+    if (newBlock == null) return;
 
-  setState(() {
-    routineBlocks.add(Map<String, dynamic>.from(newBlock));
-  });
-}
-
-Map<String, dynamic> _emptyBlockForType(String type) {
-  switch (type) {
-    case "Series descendentes":
-      return {
-        "type": "Series descendentes",
-        "title": "",
-        "schema": [21, 15, 9], // 🔥 default ladder
-        "exercises": [],
-      };
-
-    case "Buscar RM":
-      return {
-        "type": "Buscar RM",
-        "title": "",
-        "rm": 5, // Default RM a buscar
-        "exercises": [],
-      };
-
-    case "Series":
-      return {
-        "type": "Series",
-        "title": "",
-        "exercises": [],
-      };
-
-    case "Circuito":
-      return {
-        "type": "Circuito",
-        "title": "",
-        "rounds": 3,
-        "exercises": [],
-      };
-
-    case "Tabata":
-      return {
-        "type": "Tabata",
-        "title": "",
-        "work": 20,
-        "rest": 10,
-        "rounds": 8,
-        "exercises": [],
-      };
-
-    default:
-      return {
-        "type": type,
-        "title": "",
-        "exercises": [],
-      };
+    setState(() {
+      routineBlocks.add(Map<String, dynamic>.from(newBlock));
+    });
   }
-}
 
+  Map<String, dynamic> _emptyBlockForType(String type) {
+    switch (type) {
+      case "Series descendentes":
+        return {
+          "type": "Series descendentes",
+          "title": "",
+          "schema": [21, 15, 9], // 🔥 default ladder
+          "exercises": [],
+        };
+
+      case "Buscar RM":
+        return {
+          "type": "Buscar RM",
+          "title": "",
+          "rm": 5, // Default RM a buscar
+          "exercises": [],
+        };
+
+      case "Series":
+        return {"type": "Series", "title": "", "exercises": []};
+
+      case "Circuito":
+        return {"type": "Circuito", "title": "", "rounds": 3, "exercises": []};
+
+      case "Tabata":
+        return {
+          "type": "Tabata",
+          "title": "",
+          "work": 20,
+          "rest": 10,
+          "rounds": 8,
+          "exercises": [],
+        };
+
+      default:
+        return {"type": type, "title": "", "exercises": []};
+    }
+  }
 
   void _removeBlock(int index) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Eliminar bloque"),
-        content:
-            const Text("¿Seguro que deseas eliminar este bloque?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar"),
+      builder:
+          (_) => AlertDialog(
+            title: const Text("Eliminar bloque"),
+            content: const Text("¿Seguro que deseas eliminar este bloque?"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cancelar"),
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() => routineBlocks.removeAt(index));
+                  Navigator.pop(context);
+                },
+                child: const Text("Eliminar"),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () {
-              setState(() => routineBlocks.removeAt(index));
-              Navigator.pop(context);
-            },
-            child: const Text("Eliminar"),
-          ),
-        ],
-      ),
     );
   }
 
   void _askBlockType() {
-  showModalBottomSheet(
-    context: context,
-    builder: (_) {
-      return SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                "Selecciona tipo de bloque",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+    showModalBottomSheet(
+      context: context,
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  "Selecciona tipo de bloque",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
+              _blockTypeTile("Tabata"),
+              _blockTypeTile("Circuito"),
+              _blockTypeTile("EMOM"),
+              _blockTypeTile("Series"),
+              _blockTypeTile("Series descendentes"),
+              _blockTypeTile("Buscar RM"),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _blockTypeTile(String type) {
+    return ListTile(
+      title: Text(type),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      onTap: () {
+        Navigator.pop(context);
+        _openBlockEditorWithType(type);
+      },
+    );
+  }
+
+  Future<void> _openBlockEditor(int index) async {
+    final updatedBlock = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder:
+            (_) => AddWorkoutScreen(
+              initialBlock: Map<String, dynamic>.from(routineBlocks[index]),
             ),
-            _blockTypeTile("Tabata"),
-            _blockTypeTile("Circuito"),
-            _blockTypeTile("EMOM"),
-            _blockTypeTile("Series"),
-            _blockTypeTile("Series descendentes"),
-            _blockTypeTile("Buscar RM"),
-            const SizedBox(height: 12),
-          ],
-        ),
-      );
-    },
-  );
-}
-
-Widget _blockTypeTile(String type) {
-  return ListTile(
-    title: Text(type),
-    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-    onTap: () {
-      Navigator.pop(context);
-      _openBlockEditorWithType(type);
-    },
-  );
-}
-
-Future<void> _openBlockEditor(int index) async {
-  final updatedBlock = await Navigator.push<Map<String, dynamic>>(
-    context,
-    MaterialPageRoute(
-      builder: (_) => AddWorkoutScreen(
-        initialBlock: Map<String, dynamic>.from(routineBlocks[index]),
       ),
-    ),
-  );
+    );
 
-  if (updatedBlock == null) return;
+    if (updatedBlock == null) return;
 
-  setState(() {
-    routineBlocks[index] = Map<String, dynamic>.from(updatedBlock);
-  });
-}
-
+    setState(() {
+      routineBlocks[index] = Map<String, dynamic>.from(updatedBlock);
+    });
+  }
 
   void _reorderBlocks(int oldIndex, int newIndex) {
     setState(() {
@@ -280,140 +249,126 @@ Future<void> _openBlockEditor(int index) async {
     });
   }
 
-Widget _blockTile(int index) {
-  final block = routineBlocks[index];
-  final exercises =
-      List<Map<String, dynamic>>.from(block['exercises'] ?? []);
+  Widget _blockTile(int index) {
+    final block = routineBlocks[index];
+    final exercises = List<Map<String, dynamic>>.from(block['exercises'] ?? []);
 
-  final String title =
-      (block['title'] ?? '').toString().trim();
+    final String title = (block['title'] ?? '').toString().trim();
 
-  final String type =
-      (block['type'] ?? 'Bloque').toString();
+    final String type = (block['type'] ?? 'Bloque').toString();
 
-  return Card(
-    key: ValueKey(block.hashCode),
-    elevation: 2,
-    margin: const EdgeInsets.symmetric(vertical: 6),
-    child: ExpansionTile(
-      leading: ReorderableDragStartListener(
-        index: index,
-        child: const Icon(Icons.drag_handle),
-      ),
+    return Card(
+      key: ValueKey(block.hashCode),
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: ExpansionTile(
+        leading: ReorderableDragStartListener(
+          index: index,
+          child: const Icon(Icons.drag_handle),
+        ),
 
-      // 👇 TÍTULO PROFESIONAL
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title.isNotEmpty ? title : _blockSummary(block),
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-          Text(
-            type,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.grey,
-            ),
-          ),
-        ],
-      ),
-
-      childrenPadding:
-          const EdgeInsets.fromLTRB(16, 0, 16, 12),
-
-      children: [
-        if (exercises.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              "Sin ejercicios",
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
-
-        ...exercises.map((e) => _exerciseRow(e)),
-
-        const Divider(),
-
-        Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+        // 👇 TÍTULO PROFESIONAL
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () => _openBlockEditor(index),
+            Text(
+              title.isNotEmpty ? title : _blockSummary(block),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
-            IconButton(
-              icon: const Icon(Icons.delete),
-              onPressed: () => _removeBlock(index),
+            Text(
+              type,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
-      ],
-    ),
-  );
-}
 
-Widget _exerciseRow(Map<String, dynamic> e) {
-  final perSide = e['perSide'] == true;
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
 
-  final series = e['series']; // puede venir null si no es bloque Series
-  final weightText = _formatWeight(e['weight']);
+        children: [
+          if (exercises.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                "Sin ejercicios",
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
 
-  String valueText;
-  if (e['valueType'] == 'time') {
-    valueText = "${e['value']} s";
-  } else {
-    valueText = "${e['value']} reps${perSide ? " por lado" : ""}";
+          ...exercises.map((e) => _exerciseRow(e)),
+
+          const Divider(),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: () => _openBlockEditor(index),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete),
+                onPressed: () => _removeBlock(index),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
-  final parts = <String>[
-    if (series != null) "$series×",
-    valueText,
-    if (weightText.isNotEmpty) "${weightText}kg",
-  ];
+  Widget _exerciseRow(Map<String, dynamic> e) {
+    final perSide = e['perSide'] == true;
 
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(
-      children: [
-        const Icon(Icons.fitness_center, size: 14),
-        const SizedBox(width: 6),
-        Expanded(child: Text(e['name'])),
-        Text(
-          parts.join(" · "),
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.grey,
+    final series = e['series']; // puede venir null si no es bloque Series
+    final weightText = _formatWeight(e['weight']);
+
+    String valueText;
+    if (e['valueType'] == 'time') {
+      valueText = "${e['value']} s";
+    } else {
+      valueText = "${e['value']} reps${perSide ? " por lado" : ""}";
+    }
+
+    final parts = <String>[
+      if (series != null) "$series×",
+      valueText,
+      if (weightText.isNotEmpty) "${weightText}kg",
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          const Icon(Icons.fitness_center, size: 14),
+          const SizedBox(width: 6),
+          Expanded(child: Text(e['name'])),
+          Text(
+            parts.join(" · "),
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
           ),
-        ),
-      ],
-    ),
-  );
-}
+        ],
+      ),
+    );
+  }
 
-String _formatWeight(dynamic w) {
-  if (w == null) return "";
+  String _formatWeight(dynamic w) {
+    if (w == null) return "";
 
-  // si viene como string con coma, normalizamos
-  final s = w.toString().trim().replaceAll(',', '.');
-  final d = double.tryParse(s);
-  if (d == null) return w.toString();
+    // si viene como string con coma, normalizamos
+    final s = w.toString().trim().replaceAll(',', '.');
+    final d = double.tryParse(s);
+    if (d == null) return w.toString();
 
-  // si es entero, sin decimales
-  if (d % 1 == 0) return d.toInt().toString();
+    // si es entero, sin decimales
+    if (d % 1 == 0) return d.toInt().toString();
 
-  // si tiene decimales, máximo 2 y sin ceros al final
-  var out = d.toStringAsFixed(2);
-  out = out.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+    // si tiene decimales, máximo 2 y sin ceros al final
+    var out = d.toStringAsFixed(2);
+    out = out.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
 
-  // volvemos a coma para mostrar (7,5)
-  return out.replaceAll('.', ',');
-}
-
+    // volvemos a coma para mostrar (7,5)
+    return out.replaceAll('.', ',');
+  }
 
   // =========================
   // DISPOSE
@@ -434,10 +389,7 @@ String _formatWeight(dynamic w) {
       appBar: AppBar(
         title: Text(isEdit ? "Editar rutina" : "Nueva rutina"),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: _saveRoutine,
-          ),
+          IconButton(icon: const Icon(Icons.save), onPressed: _saveRoutine),
         ],
       ),
       body: Column(
@@ -458,18 +410,14 @@ String _formatWeight(dynamic w) {
                 const SizedBox(height: 8),
                 TextField(
                   controller: descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: "Descripción",
-                  ),
+                  decoration: const InputDecoration(labelText: "Descripción"),
                 ),
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
                     "Bloques: ${routineBlocks.length}",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
@@ -480,19 +428,20 @@ String _formatWeight(dynamic w) {
           // BLOCK LIST
           // =========================
           Expanded(
-            child: routineBlocks.isEmpty
-                ? const Center(
-                    child: Text(
-                      "Aún no has agregado bloques",
-                      style: TextStyle(color: Colors.grey),
+            child:
+                routineBlocks.isEmpty
+                    ? const Center(
+                      child: Text(
+                        "Aún no has agregado bloques",
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                    : ReorderableListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: routineBlocks.length,
+                      onReorder: _reorderBlocks,
+                      itemBuilder: (_, i) => _blockTile(i),
                     ),
-                  )
-                : ReorderableListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: routineBlocks.length,
-                    onReorder: _reorderBlocks,
-                    itemBuilder: (_, i) => _blockTile(i),
-                  ),
           ),
 
           // =========================
@@ -501,11 +450,10 @@ String _formatWeight(dynamic w) {
           Padding(
             padding: const EdgeInsets.all(16),
             child: ElevatedButton.icon(
-  icon: const Icon(Icons.add),
-  label: const Text("Agregar bloque"),
-  onPressed: _askBlockType,
-),
-
+              icon: const Icon(Icons.add),
+              label: const Text("Agregar bloque"),
+              onPressed: _askBlockType,
+            ),
           ),
         ],
       ),

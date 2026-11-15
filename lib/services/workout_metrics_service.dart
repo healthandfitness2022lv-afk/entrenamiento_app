@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/workout_rpe_utils.dart';
+import 'workout_volume_service.dart';
 
 class WorkoutMetrics {
   final int totalSets;
@@ -13,153 +15,67 @@ class WorkoutMetrics {
 }
 
 class WorkoutMetricsService {
-
+  /// Fuente única de sets/volumen/RPE promedio de un workout.
+  /// El volumen se delega en [WorkoutVolumeService] y el RPE en
+  /// [calculateAverageWorkoutRPE] para no mantener la fórmula en más de un
+  /// lugar. Si [onlyDoneSets] es true, las series de tipo "Series*" que
+  /// tengan `done: false` explícito se excluyen del conteo de sets (usado en
+  /// pantallas donde el usuario puede marcar series como no completadas).
   static WorkoutMetrics computeFromPerformed(
-    List<Map<String, dynamic>> performed,
-  ) {
+    List<Map<String, dynamic>> performed, {
+    bool onlyDoneSets = false,
+  }) {
     int totalSets = 0;
-    int totalVolume = 0;
-
-    double rpeSum = 0;
-    int rpeCount = 0;
 
     for (final e in performed) {
       final type = e['type'];
 
-      // =========================
-      // 🔵 SERIES
-      // =========================
-      if (type == 'Series' || type == 'Series descendentes' || type == 'Buscar RM') {
-        final exercises =
-            List<Map<String, dynamic>>.from(e['exercises'] ?? []);
-
+      if (type == 'Series' ||
+          type == 'Series descendentes' ||
+          type == 'Buscar RM') {
+        final exercises = List<Map<String, dynamic>>.from(e['exercises'] ?? []);
         for (final ex in exercises) {
-          final sets =
-              List<Map<String, dynamic>>.from(ex['sets'] ?? []);
-
-          final bool perSide = ex['perSide'] == true;
-
+          final sets = List<Map<String, dynamic>>.from(ex['sets'] ?? []);
           for (final s in sets) {
+            if (onlyDoneSets && s.containsKey('done') && s['done'] != true) {
+              continue;
+            }
             totalSets++;
-
-            final rpe = (s['rpe'] as num?)?.toDouble();
-            if (rpe != null) {
-              rpeSum += rpe;
-              rpeCount++;
-            }
-
-            final double weight =
-                (s['weight'] as num?)?.toDouble() ?? 0;
-            final int reps =
-                (s['reps'] as num?)?.toInt() ?? 0;
-
-            final double effectiveWeight =
-                perSide ? weight * 2 : weight;
-
-            if (reps > 0 && effectiveWeight > 0) {
-              totalVolume +=
-                  (effectiveWeight * reps).round();
-            }
           }
         }
       }
 
-      // =========================
-      // 🔴 CIRCUITO
-      // =========================
       if (type == 'Circuito') {
-        final rounds =
-            List<Map<String, dynamic>>.from(e['rounds'] ?? []);
-
+        final rounds = List<Map<String, dynamic>>.from(e['rounds'] ?? []);
         for (final round in rounds) {
-          final exercises =
-              List<Map<String, dynamic>>.from(
-                  round['exercises'] ?? []);
-
-          for (final ex in exercises) {
-            totalSets++;
-
-            final rpe = (ex['rpe'] as num?)?.toDouble();
-            if (rpe != null) {
-              rpeSum += rpe;
-              rpeCount++;
-            }
-
-            final double weight =
-                (ex['weight'] as num?)?.toDouble() ?? 0;
-            final int reps =
-                (ex['reps'] as num?)?.toInt() ?? 0;
-
-            final bool perSide =
-                ex['perSide'] == true;
-
-            final double effectiveWeight =
-                perSide ? weight * 2 : weight;
-
-            if (reps > 0 && effectiveWeight > 0) {
-              totalVolume +=
-                  (effectiveWeight * reps).round();
-            }
-          }
+          final exercises = List<Map<String, dynamic>>.from(
+            round['exercises'] ?? [],
+          );
+          totalSets += exercises.length;
         }
       }
 
-      // =========================
-      // 🟣 TABATA
-      // =========================
       if (type == 'Tabata') {
-        final exercises =
-            List<Map<String, dynamic>>.from(
-                e['exercises'] ?? []);
-
-        for (final ex in exercises) {
-          totalSets++;
-
-          final rpe = (ex['rpe'] as num?)?.toDouble();
-          if (rpe != null) {
-            rpeSum += rpe;
-            rpeCount++;
-          }
-
-          final double weight =
-              (ex['weight'] as num?)?.toDouble() ?? 0;
-          final int reps =
-              (ex['reps'] as num?)?.toInt() ?? 0;
-
-          final bool perSide =
-              ex['perSide'] == true;
-
-          final double effectiveWeight =
-              perSide ? weight * 2 : weight;
-
-          if (reps > 0 && effectiveWeight > 0) {
-            totalVolume +=
-                (effectiveWeight * reps).round();
-          }
-        }
+        final exercises = List<Map<String, dynamic>>.from(e['exercises'] ?? []);
+        totalSets += exercises.length;
       }
     }
 
-    final avgRpe =
-        rpeCount > 0 ? (rpeSum / rpeCount) : 0.0;
+    final totalVolume = WorkoutVolumeService.calculateWorkoutVolume(performed);
+    final avgRpe = calculateAverageWorkoutRPE(performed);
 
     return WorkoutMetrics(
       totalSets: totalSets,
-      totalVolumeKg: totalVolume,
+      totalVolumeKg: totalVolume.round(),
       avgRpe: avgRpe,
     );
   }
 
-  static List<Map<String, dynamic>> performedFromDoc(
-    DocumentSnapshot d,
-  ) {
-    final data =
-        d.data() as Map<String, dynamic>?;
+  static List<Map<String, dynamic>> performedFromDoc(DocumentSnapshot d) {
+    final data = d.data() as Map<String, dynamic>?;
 
     if (data == null) return [];
 
-    return List<Map<String, dynamic>>.from(
-      data['performed'] ?? [],
-    );
+    return List<Map<String, dynamic>>.from(data['performed'] ?? []);
   }
 }

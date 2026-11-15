@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:confetti/confetti.dart';
 import '../models/achievement.dart';
 import '../services/progress_alert_service.dart';
+import '../widgets/workout_story_export.dart';
+import '../theme/app_theme.dart';
 
 class WorkoutSummaryScreen extends StatefulWidget {
   final List<Achievement> unlockedAchievements;
@@ -11,6 +14,9 @@ class WorkoutSummaryScreen extends StatefulWidget {
   final String sessionName;
   final int durationMinutes;
 
+  /// Workout recién guardado; habilita exportar la historia de Instagram.
+  final DocumentReference? workoutRef;
+
   const WorkoutSummaryScreen({
     super.key,
     required this.unlockedAchievements,
@@ -19,6 +25,7 @@ class WorkoutSummaryScreen extends StatefulWidget {
     required this.newStats,
     required this.sessionName,
     required this.durationMinutes,
+    this.workoutRef,
   });
 
   @override
@@ -28,8 +35,25 @@ class WorkoutSummaryScreen extends StatefulWidget {
 class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
   late ConfettiController _confettiController;
   final ScrollController _scrollController = ScrollController();
-  
+
   bool _showAnimations = false;
+  bool _preparingStory = false;
+
+  Future<void> _shareStory() async {
+    final ref = widget.workoutRef;
+    if (ref == null || _preparingStory) return;
+    setState(() => _preparingStory = true);
+    try {
+      await WorkoutStoryExporter.showForWorkout(context, ref);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo preparar la historia: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _preparingStory = false);
+    }
+  }
 
   final Map<String, String> _statToGroup = {
     'totalWorkouts': 'workouts',
@@ -42,8 +66,10 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
   @override
   void initState() {
     super.initState();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 3));
-    
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 3),
+    );
+
     // Iniciar animaciones de barras despues de que se monte la vista
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -51,7 +77,7 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
           _showAnimations = true;
         });
         if (widget.unlockedAchievements.isNotEmpty) {
-           _confettiController.play();
+          _confettiController.play();
         }
       }
     });
@@ -65,9 +91,10 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
   }
 
   Achievement? _getNextTarget(String groupId, num currentValue) {
-    final groupAch = achievementsCatalog.where((a) => a.groupId == groupId).toList();
+    final groupAch =
+        achievementsCatalog.where((a) => a.groupId == groupId).toList();
     groupAch.sort((a, b) => a.level.compareTo(b.level));
-    
+
     for (final ach in groupAch) {
       if (ach.targetValue > currentValue) {
         return ach;
@@ -75,20 +102,21 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
     }
     return null; // Si ya los completo todos
   }
-  
+
   Achievement? _getJustUnlocked(String groupId, num oldValue, num newValue) {
-     final groupAch = achievementsCatalog.where((a) => a.groupId == groupId).toList();
-     groupAch.sort((a, b) => a.level.compareTo(b.level));
-     
-     // Buscar el logro de mayor nivel que se acaba de pasar con newValue,
-     // y que ants con oldValue NO se pasaba.
-     Achievement? unlocked;
-     for (final ach in groupAch) {
-       if (oldValue < ach.targetValue && newValue >= ach.targetValue) {
-          unlocked = ach;
-       }
-     }
-     return unlocked;
+    final groupAch =
+        achievementsCatalog.where((a) => a.groupId == groupId).toList();
+    groupAch.sort((a, b) => a.level.compareTo(b.level));
+
+    // Buscar el logro de mayor nivel que se acaba de pasar con newValue,
+    // y que ants con oldValue NO se pasaba.
+    Achievement? unlocked;
+    for (final ach in groupAch) {
+      if (oldValue < ach.targetValue && newValue >= ach.targetValue) {
+        unlocked = ach;
+      }
+    }
+    return unlocked;
   }
 
   Widget _buildSummaryHeader(ThemeData theme) {
@@ -98,29 +126,36 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
         const SizedBox(height: 16),
         Text(
           "¡Entrenamiento Finalizado!",
-          style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
         Text(
           "${widget.sessionName} - ${widget.durationMinutes} min",
-          style: theme.textTheme.titleMedium?.copyWith(color: theme.textTheme.bodySmall?.color),
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: theme.textTheme.bodySmall?.color,
+          ),
         ),
       ],
     );
   }
 
   Widget _buildProgressBar(
-      ThemeData theme,
-      String label, 
-      num oldValue, 
-      num newValue, 
-      Achievement nextAch, 
-      Achievement? unlockedThisSession
+    ThemeData theme,
+    String label,
+    num oldValue,
+    num newValue,
+    Achievement nextAch,
+    Achievement? unlockedThisSession,
   ) {
-    final target = unlockedThisSession != null ? unlockedThisSession.targetValue : nextAch.targetValue;
+    final target =
+        unlockedThisSession != null
+            ? unlockedThisSession.targetValue
+            : nextAch.targetValue;
     final maxTarget = target > 0 ? target : 1.0;
-    
+
     // Usar Tween animation para interpolar valor inicial -> valor final
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0),
@@ -130,19 +165,26 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                label,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
+              Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
               if (unlockedThisSession != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.amber.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.amber),
                   ),
-                  child: const Text("¡Subiste de Nivel!", style: TextStyle(color: Colors.amber, fontSize: 10, fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    "¡Subiste de Nivel!",
+                    style: TextStyle(
+                      color: Colors.amber,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -150,14 +192,28 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
           TweenAnimationBuilder<double>(
             tween: Tween<double>(
               begin: (oldValue / maxTarget).clamp(0.0, 1.0).toDouble(),
-              end: _showAnimations ? (newValue / maxTarget).clamp(0.0, 1.0).toDouble() : (oldValue / maxTarget).clamp(0.0, 1.0).toDouble(),
+              end:
+                  _showAnimations
+                      ? (newValue / maxTarget).clamp(0.0, 1.0).toDouble()
+                      : (oldValue / maxTarget).clamp(0.0, 1.0).toDouble(),
             ),
             duration: const Duration(milliseconds: 1500),
             curve: Curves.easeOutCubic,
             builder: (context, value, _) {
               // Interpolacion inversa para mostrar el numero animado
-              final animatedValue = oldValue + (newValue - oldValue) * (_showAnimations ? (value - (oldValue/maxTarget)) / ((newValue/maxTarget) - (oldValue/maxTarget) == 0 ? 1 : (newValue/maxTarget) - (oldValue/maxTarget)) : 0);
-              
+              final animatedValue =
+                  oldValue +
+                  (newValue - oldValue) *
+                      (_showAnimations
+                          ? (value - (oldValue / maxTarget)) /
+                              ((newValue / maxTarget) -
+                                          (oldValue / maxTarget) ==
+                                      0
+                                  ? 1
+                                  : (newValue / maxTarget) -
+                                      (oldValue / maxTarget))
+                          : 0);
+
               final isUnlocked = value >= 1.0 && unlockedThisSession != null;
 
               return Column(
@@ -166,9 +222,14 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
                   Row(
                     children: [
                       Icon(
-                         unlockedThisSession != null ? unlockedThisSession.icon : nextAch.icon, 
-                         size: 20, 
-                         color: isUnlocked ? Colors.amber : theme.colorScheme.primary
+                        unlockedThisSession != null
+                            ? unlockedThisSession.icon
+                            : nextAch.icon,
+                        size: 20,
+                        color:
+                            isUnlocked
+                                ? Colors.amber
+                                : theme.colorScheme.primary,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -177,9 +238,12 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
                           child: LinearProgressIndicator(
                             value: value,
                             minHeight: 12,
-                            backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                            backgroundColor:
+                                theme.colorScheme.surfaceContainerHighest,
                             valueColor: AlwaysStoppedAnimation<Color>(
-                               isUnlocked ? Colors.amber : theme.colorScheme.primary
+                              isUnlocked
+                                  ? Colors.amber
+                                  : theme.colorScheme.primary,
                             ),
                           ),
                         ),
@@ -188,24 +252,28 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
                       Text(
                         "${animatedValue.toStringAsFixed(animatedValue == animatedValue.toInt() ? 0 : 1)} / ${target.toInt()} ${nextAch.unit}",
                         style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: isUnlocked ? Colors.amber : null,
+                          fontWeight: FontWeight.bold,
+                          color: isUnlocked ? Colors.amber : null,
                         ),
                       ),
                     ],
                   ),
                   if (isUnlocked) ...[
-                     const SizedBox(height: 4),
-                     Text(
-                        unlockedThisSession.title, 
-                        style: const TextStyle(fontSize: 12, color: Colors.amber, fontWeight: FontWeight.bold),
-                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      unlockedThisSession.title,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.amber,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ] else ...[
-                     const SizedBox(height: 4),
-                     Text(
-                        "Próximo: ${nextAch.title}", 
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Próximo: ${nextAch.title}",
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
                   ],
                 ],
               );
@@ -218,37 +286,75 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
 
   Widget _buildProgressSection(ThemeData theme) {
     List<Widget> bars = [];
-    
+
     // Evaluate progress bars
     _statToGroup.forEach((statKey, groupId) {
-       final oldVal = widget.oldStats[statKey] ?? 0;
-       final newVal = widget.newStats[statKey] ?? 0;
-       
-       if (newVal > oldVal) {
-          final nextAch = _getNextTarget(groupId, oldVal);
-          final unlocked = _getJustUnlocked(groupId, oldVal, newVal);
-          
-          if (nextAch != null || unlocked != null) {
-              String label = "";
-              switch(statKey) {
-                 case 'totalWorkouts': label = "Entrenamientos Totales"; break;
-                 case 'totalVolume': label = "Volumen Total Movido"; break;
-                 case 'maxVolumeSession': label = "Volumen en Sesión"; break;
-                 case 'maxStreak': label = "Racha Actual"; break;
-                 case 'maxWeeklySessions': label = "Sesiones en la Semana"; break;
-              }
+      num oldVal = widget.oldStats[statKey] ?? 0;
+      num newVal = widget.newStats[statKey] ?? 0;
 
-              bars.add(_buildProgressBar(
-                  theme, 
-                  label, 
-                  oldVal, 
-                  newVal, 
-                  nextAch ?? unlocked!, 
-                  unlocked
-              ));
-              bars.add(const Divider(height: 1, color: Colors.white10));
+      // Especial para rachas: queremos seguir el progreso de la racha ACTUAL,
+      // pero los logros se basan en la racha MÁXIMA histórica.
+      if (statKey == 'maxStreak') {
+        final oldCurrent = widget.oldStats['currentStreak'] ?? 0;
+        final newCurrent = widget.newStats['currentStreak'] ?? 0;
+
+        if (newCurrent > oldCurrent) {
+          final record = widget.newStats['maxStreak'] ?? 0;
+          // El próximo logro a mostrar será el siguiente después del RÈCORD histórico
+          final nextAch = _getNextTarget(groupId, record);
+          final unlocked = _getJustUnlocked(groupId, oldVal, newVal);
+
+          if (nextAch != null || unlocked != null) {
+            bars.add(
+              _buildProgressBar(
+                theme,
+                "Racha Actual",
+                oldCurrent,
+                newCurrent,
+                nextAch ?? unlocked!,
+                unlocked,
+              ),
+            );
+            bars.add(const Divider(height: 1, color: Colors.white10));
           }
-       }
+        }
+        return; // Saltamos el procesamiento normal para maxStreak
+      }
+
+      if (newVal > oldVal) {
+        final nextAch = _getNextTarget(groupId, oldVal);
+        final unlocked = _getJustUnlocked(groupId, oldVal, newVal);
+
+        if (nextAch != null || unlocked != null) {
+          String label = "";
+          switch (statKey) {
+            case 'totalWorkouts':
+              label = "Entrenamientos Totales";
+              break;
+            case 'totalVolume':
+              label = "Volumen Total Movido";
+              break;
+            case 'maxVolumeSession':
+              label = "Volumen en Sesión";
+              break;
+            case 'maxWeeklySessions':
+              label = "Sesiones en la Semana";
+              break;
+          }
+
+          bars.add(
+            _buildProgressBar(
+              theme,
+              label,
+              oldVal,
+              newVal,
+              nextAch ?? unlocked!,
+              unlocked,
+            ),
+          );
+          bars.add(const Divider(height: 1, color: Colors.white10));
+        }
+      }
     });
 
     if (bars.isEmpty) return const SizedBox();
@@ -263,8 +369,8 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-               "Tu Progreso", 
-               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              "Tu Progreso",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             ...bars,
@@ -277,21 +383,31 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
   Widget _buildUnlockedAchievementsSection(ThemeData theme) {
     if (widget.unlockedAchievements.isEmpty) return const SizedBox();
 
-    List<Widget> achievementWidgets = widget.unlockedAchievements.map((a) {
-      return ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.amber.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(a.icon, color: Colors.amber, size: 24),
-        ),
-        title: Text(a.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        subtitle: Text(a.description, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-      );
-    }).toList();
+    List<Widget> achievementWidgets =
+        widget.unlockedAchievements.map((a) {
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 0,
+              vertical: 4,
+            ),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(a.icon, color: Colors.amber, size: 24),
+            ),
+            title: Text(
+              a.title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            subtitle: Text(
+              a.description,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          );
+        }).toList();
 
     return Card(
       color: theme.colorScheme.surface,
@@ -311,8 +427,12 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
                 Icon(Icons.emoji_events, color: Colors.amber),
                 SizedBox(width: 8),
                 Text(
-                   "¡Logros Desbloqueados!", 
-                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.amber),
+                  "¡Logros Desbloqueados!",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.amber,
+                  ),
                 ),
               ],
             ),
@@ -327,33 +447,63 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
   Widget _buildAlertsSection(ThemeData theme) {
     if (widget.progressAlerts.isEmpty) return const SizedBox();
 
-    List<Widget> alertWidgets = widget.progressAlerts.map((a) {
-      IconData id; Color c;
-      switch (a.type) {
-        case ProgressAlertType.newPR: id = Icons.emoji_events; c = Colors.amber; break;
-        case ProgressAlertType.heaviestSet: id = Icons.fitness_center; c = Colors.deepPurpleAccent; break;
-        case ProgressAlertType.sessionVolumePR: id = Icons.bar_chart; c = Colors.blueAccent; break;
-        case ProgressAlertType.bestWeekEver: id = Icons.calendar_today; c = Colors.green; break;
-        case ProgressAlertType.improvedEfficiency: id = Icons.psychology; c = Colors.teal; break;
-        default: id = Icons.star; c = Colors.orange; break;
-      }
+    List<Widget> alertWidgets =
+        widget.progressAlerts.map((a) {
+          IconData id;
+          Color c;
+          switch (a.type) {
+            case ProgressAlertType.newPR:
+              id = Icons.emoji_events;
+              c = Colors.amber;
+              break;
+            case ProgressAlertType.heaviestSet:
+              id = Icons.fitness_center;
+              c = Colors.deepPurpleAccent;
+              break;
+            case ProgressAlertType.sessionVolumePR:
+              id = Icons.bar_chart;
+              c = AppColors.info;
+              break;
+            case ProgressAlertType.bestWeekEver:
+              id = Icons.calendar_today;
+              c = Colors.green;
+              break;
+            case ProgressAlertType.improvedEfficiency:
+              id = Icons.psychology;
+              c = Colors.teal;
+              break;
+            default:
+              id = Icons.star;
+              c = Colors.orange;
+              break;
+          }
 
-      return ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: c.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(id, color: c, size: 24),
-        ),
-        title: Text(a.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        subtitle: a.explanation.isNotEmpty 
-            ? Text(a.explanation, style: const TextStyle(fontSize: 12, color: Colors.grey))
-            : null,
-      );
-    }).toList();
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 0,
+              vertical: 4,
+            ),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: c.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(id, color: c, size: 24),
+            ),
+            title: Text(
+              a.title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            subtitle:
+                a.explanation.isNotEmpty
+                    ? Text(
+                      a.explanation,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    )
+                    : null,
+          );
+        }).toList();
 
     return Card(
       color: theme.colorScheme.surface,
@@ -365,8 +515,8 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-               "¡Récords de la Sesión!", 
-               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              "¡Récords de la Sesión!",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             ...alertWidgets,
@@ -386,18 +536,18 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
         children: [
           // Background Gradient effect
           Positioned.fill(
-             child: Container(
-                decoration: BoxDecoration(
-                   gradient: LinearGradient(
-                      colors: [
-                         theme.colorScheme.primary.withOpacity(0.1),
-                         theme.scaffoldBackgroundColor,
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                   ),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    theme.colorScheme.primary.withOpacity(0.1),
+                    theme.scaffoldBackgroundColor,
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                 ),
-             )
+              ),
+            ),
           ),
           SafeArea(
             child: CustomScrollView(
@@ -422,20 +572,63 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
                         const SizedBox(height: 24),
                         _buildProgressSection(theme),
                         const SizedBox(height: 32),
+                        if (widget.workoutRef != null) ...[
+                          OutlinedButton.icon(
+                            onPressed: _preparingStory ? null : _shareStory,
+                            icon:
+                                _preparingStory
+                                    ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                    : const Icon(Icons.download_rounded),
+                            label: Text(
+                              _preparingStory
+                                  ? 'Preparando imagen…'
+                                  : 'Descargar historia',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              foregroundColor: theme.colorScheme.primary,
+                              side: BorderSide(
+                                color: theme.colorScheme.primary,
+                                width: 1.5,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         ElevatedButton(
                           onPressed: () {
-                             if (Navigator.canPop(context)) {
-                                Navigator.pop(context); // Pop summary
-                                Navigator.pop(context); // Pop log workout screen
-                             }
+                            Navigator.of(
+                              context,
+                            ).popUntil((route) => route.isFirst);
                           },
                           style: ElevatedButton.styleFrom(
-                             padding: const EdgeInsets.symmetric(vertical: 16),
-                             backgroundColor: theme.colorScheme.primary,
-                             foregroundColor: theme.colorScheme.onPrimary,
-                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            backgroundColor: theme.colorScheme.primary,
+                            foregroundColor: theme.colorScheme.onPrimary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
-                          child: const Text("Continuar", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          child: const Text(
+                            "Continuar",
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 20),
                       ],
@@ -457,7 +650,7 @@ class _WorkoutSummaryScreenState extends State<WorkoutSummaryScreen> {
                 Colors.blue,
                 Colors.pink,
                 Colors.orange,
-                Colors.purple
+                Colors.purple,
               ],
             ),
           ),

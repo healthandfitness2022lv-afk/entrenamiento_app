@@ -2,14 +2,13 @@ import 'package:flutter/material.dart';
 import '../models/muscle_catalog.dart';
 
 /// ------------------------------------------------------
-/// Construye el SVG coloreado según el heatmap
+/// Construye el SVG coloreado segÃºn el heatmap
 /// ------------------------------------------------------
 String buildColoredSvg(
   String rawSvg,
   Map<Muscle, double> heatmap, {
   Color? overrideColor,
   double opacityMultiplier = 1.0, // 👈 NUEVO
-
 }) {
   String svg = rawSvg;
 
@@ -21,15 +20,12 @@ String buildColoredSvg(
     } else {
       final color = overrideColor ?? heatmapColor(value);
 
-
       final v = value.clamp(0, 100).toDouble();
-final normalized = v / 60; // 0.0 → 1.0
-double baseOpacity = 0.3 + (normalized * 0.5);
+      final normalized = v / 60; // 0.0 -> 1.0
+      double baseOpacity = 0.3 + (normalized * 0.5);
 
-// 🔥 Aplicar multiplicador
-final opacity = (baseOpacity * opacityMultiplier)
-    .clamp(0.15, 0.65);
-
+      // Aplicar multiplicador
+      final opacity = (baseOpacity * opacityMultiplier).clamp(0.15, 0.65);
 
       svg = _applyColorById(svg, muscle.name, color, opacity);
     }
@@ -41,19 +37,13 @@ final opacity = (baseOpacity * opacityMultiplier)
 /// ------------------------------------------------------
 /// Aplica color a un path por ID
 /// ------------------------------------------------------
-String _applyColorById(
-  String svg,
-  String id,
-  Color color,
-  double opacity,
-) {
+String _applyColorById(String svg, String id, Color color, double opacity) {
   // 🔥 SI ES TRANSPARENTE → NO PINTAR
   if (color.alpha == 0) {
     return _applyTransparentById(svg, id);
   }
 
   final hex = _colorToHex(color);
-
 
   final regExp = RegExp(
     r'(<[^>]*id="' + id + r'"[^>]*)(style="[^"]*")?',
@@ -77,12 +67,9 @@ String _applyColorById(
 }
 
 /// ------------------------------------------------------
-/// Hace invisible un músculo no trabajado
+/// Hace invisible un mÃºsculo no trabajado
 /// ------------------------------------------------------
-String _applyTransparentById(
-  String svg,
-  String id,
-) {
+String _applyTransparentById(String svg, String id) {
   final regExp = RegExp(
     r'(<[^>]*id="' + id + r'"[^>]*)(style="[^"]*")?',
     multiLine: true,
@@ -92,10 +79,7 @@ String _applyTransparentById(
     String tag = match.group(1)!;
 
     if (tag.contains('style=')) {
-      tag = tag.replaceAll(
-        RegExp(r'style="[^"]*"'),
-        'style="fill:none;"',
-      );
+      tag = tag.replaceAll(RegExp(r'style="[^"]*"'), 'style="fill:none;"');
     } else {
       tag = '$tag fill="none"';
     }
@@ -121,31 +105,19 @@ Color heatmapColor(double value) {
   // 🔹 0–0.25 → Celeste → Azul
   if (scaled <= 0.25) {
     final t = scaled / 0.25;
-    return Color.lerp(
-      const Color(0xFF4FC3F7),
-      const Color(0xFF1565C0),
-      t,
-    )!;
+    return Color.lerp(const Color(0xFF4FC3F7), const Color(0xFF1565C0), t)!;
   }
 
   // 🔹 0.25–0.5 → Azul → Morado
   if (scaled <= 0.5) {
     final t = (scaled - 0.25) / 0.25;
-    return Color.lerp(
-      const Color(0xFF1565C0),
-      const Color(0xFF7B1FA2),
-      t,
-    )!;
+    return Color.lerp(const Color(0xFF1565C0), const Color(0xFF7B1FA2), t)!;
   }
 
   // 🔹 0.5–0.75 → Morado → Naranjo
   if (scaled <= 0.75) {
     final t = (scaled - 0.5) / 0.25;
-    return Color.lerp(
-      const Color(0xFF7B1FA2),
-      const Color(0xFFFF8F00),
-      t,
-    )!;
+    return Color.lerp(const Color(0xFF7B1FA2), const Color(0xFFFF8F00), t)!;
   }
 
   // 🔴 0.75–1 → Naranjo → Rojo INTENSO
@@ -156,10 +128,6 @@ Color heatmapColor(double value) {
     t,
   )!;
 }
-
-
-
-
 
 /// ------------------------------------------------------
 String _colorToHex(Color color) {

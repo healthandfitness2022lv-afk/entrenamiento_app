@@ -29,7 +29,6 @@ class WorkoutSet {
   /// false = bilateral
   final bool perSide;
 
-  
   final Map<Muscle, double> muscleWeights;
 
   /// Tipo de origen (Series / Circuito / Tabata)

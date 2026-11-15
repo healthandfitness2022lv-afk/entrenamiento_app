@@ -6,7 +6,10 @@ class AchievementDialog extends StatelessWidget {
 
   const AchievementDialog({super.key, required this.achievements});
 
-  static Future<void> show(BuildContext context, List<Achievement> achievements) {
+  static Future<void> show(
+    BuildContext context,
+    List<Achievement> achievements,
+  ) {
     if (achievements.isEmpty) return Future.value();
     return showDialog(
       context: context,
@@ -35,49 +38,60 @@ class AchievementDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: achievements.map((a) {
-            Color catColor = Colors.blue;
-            if (a.category == AchievementCategory.strength) catColor = Colors.redAccent;
-            if (a.category == AchievementCategory.volume) catColor = Colors.purpleAccent;
-            if (a.category == AchievementCategory.intelligence) catColor = Colors.teal;
-            if (a.category == AchievementCategory.constancy) catColor = Colors.orange;
+          children:
+              achievements.map((a) {
+                Color catColor = Colors.blue;
+                if (a.category == AchievementCategory.strength)
+                  catColor = Colors.redAccent;
+                if (a.category == AchievementCategory.volume)
+                  catColor = Colors.purpleAccent;
+                if (a.category == AchievementCategory.intelligence)
+                  catColor = Colors.teal;
+                if (a.category == AchievementCategory.constancy)
+                  catColor = Colors.orange;
 
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: catColor.withOpacity(0.1),
-                border: Border.all(color: catColor.withOpacity(0.3)),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: catColor,
-                    foregroundColor: Colors.white,
-                    child: Icon(a.icon, color: Colors.white),
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: catColor.withOpacity(0.1),
+                    border: Border.all(color: catColor.withOpacity(0.3)),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          a.title,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: catColor,
+                        foregroundColor: Colors.white,
+                        child: Icon(a.icon, color: Colors.white),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              a.title,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              a.description,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          a.description,
-                          style: TextStyle(fontSize: 12, color: Colors.black87),
-                        ),
-                      ],
-                    ),
-                  )
-                ],
-              ),
-            );
-          }).toList(),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
         ),
       ),
       actions: [
@@ -86,12 +100,17 @@ class AchievementDialog extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.amber,
             foregroundColor: Colors.black,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             elevation: 0,
           ),
-          child: const Text("¡Genial!", style: TextStyle(fontWeight: FontWeight.bold)),
-        )
+          child: const Text(
+            "¡Genial!",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+        ),
       ],
     );
   }

@@ -1,35 +1,39 @@
 import 'package:flutter/material.dart';
 
+import '../services/planned_load_service.dart';
+import '../utils/block_title_utils.dart';
+
 class RoutineView extends StatelessWidget {
   final Map<String, dynamic> routine;
   final bool compact;
+  final bool showBlockHeaders;
 
   const RoutineView({
     super.key,
     required this.routine,
     this.compact = false,
+    this.showBlockHeaders = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final blocks =
-        List<Map<String, dynamic>>.from(routine['blocks'] ?? []);
+    final blocks = List<Map<String, dynamic>>.from(routine['blocks'] ?? []);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: blocks
-          .map(
-            (block) => Padding(
-              padding: EdgeInsets.only(
-                bottom: compact ? 16 : 24,
-              ),
-              child: RoutineBlockView(
-                block: block,
-                compact: compact,
-              ),
-            ),
-          )
-          .toList(),
+      children:
+          blocks
+              .map(
+                (block) => Padding(
+                  padding: EdgeInsets.only(bottom: compact ? 16 : 24),
+                  child: RoutineBlockView(
+                    block: block,
+                    compact: compact,
+                    showHeader: showBlockHeaders,
+                  ),
+                ),
+              )
+              .toList(),
     );
   }
 }
@@ -37,70 +41,67 @@ class RoutineView extends StatelessWidget {
 class RoutineBlockView extends StatelessWidget {
   final Map<String, dynamic> block;
   final bool compact;
+  final bool showHeader;
 
   const RoutineBlockView({
     super.key,
     required this.block,
     this.compact = false,
+    this.showHeader = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final exercises =
-        List<Map<String, dynamic>>.from(block['exercises'] ?? []);
+    final exercises = List<Map<String, dynamic>>.from(block['exercises'] ?? []);
 
-    final customTitle =
-        (block['title'] ?? '').toString().trim();
+    final rawTitle = (block['title'] ?? '').toString().trim();
+    final customTitle = rawTitle.isEmpty ? '' : visibleBlockTitle(rawTitle);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (showHeader)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                _blockIcon(block['type']),
+                size: compact ? 16 : 20,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 6),
 
-        // ===========================
-        // HEADER BLOQUE
-        // ===========================
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              _blockIcon(block['type']),
-              size: compact ? 16 : 20,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(width: 6),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-
-                  // 🔥 TÍTULO PRINCIPAL
-                  Text(
-                    customTitle.isNotEmpty
-                        ? customTitle
-                        : _blockSubtitle(block),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: compact ? 14 : 17,
-                    ),
-                  ),
-
-                  // 🔥 SUBTÍTULO (solo si hay nombre personalizado)
-                  if (customTitle.isNotEmpty)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 🔥 TÍTULO PRINCIPAL
                     Text(
-                      _blockSubtitle(block),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey,
+                      customTitle.isNotEmpty
+                          ? customTitle
+                          : _blockSubtitle(block),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: compact ? 14 : 17,
                       ),
                     ),
-                ],
-              ),
-            ),
-          ],
-        ),
 
-        SizedBox(height: compact ? 8 : 12),
+                    // 🔥 SUBTÍTULO (solo si hay nombre personalizado)
+                    if (customTitle.isNotEmpty)
+                      Text(
+                        _blockSubtitle(block),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+        if (showHeader) SizedBox(height: compact ? 8 : 12),
 
         // ===========================
         // CONTENEDOR EJERCICIOS
@@ -119,12 +120,12 @@ class RoutineBlockView extends StatelessWidget {
             ),
           ),
           child: Column(
-            children: exercises
-                .map((e) => RoutineExerciseRow(
-                      exercise: e,
-                      compact: compact,
-                    ))
-                .toList(),
+            children:
+                exercises
+                    .map(
+                      (e) => RoutineExerciseRow(exercise: e, compact: compact),
+                    )
+                    .toList(),
           ),
         ),
       ],
@@ -147,67 +148,90 @@ class RoutineExerciseRow extends StatelessWidget {
     final bool perSide = exercise['perSide'] == true;
     final num weight = (exercise['weight'] ?? 0);
 
+    // Si el ejercicio ya viene resuelto con `sets` (shape de
+    // `PlannedLoadService.resolveBlock`), se desglosa por grupos de series
+    // con el mismo peso/reps — ej. "2x3 @ 85kg / 1x3 @ 90kg" — en vez de
+    // colapsar todo a un único "series × reps" que oculta que las series
+    // tengan valores distintos entre sí.
+    final rawSets = exercise['sets'];
+    if (rawSets is List && rawSets.isNotEmpty) {
+      final grouped = PlannedLoadService.formatSetGroups(
+        List<Map<String, dynamic>>.from(rawSets),
+      );
+      if (grouped.isNotEmpty) {
+        return Padding(
+          padding: EdgeInsets.symmetric(vertical: compact ? 4 : 6),
+          child: Row(
+            children: [
+              Icon(
+                Icons.play_arrow,
+                size: compact ? 14 : 16,
+                color: Colors.grey,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  exercise['name'] ?? '',
+                  style: TextStyle(fontSize: compact ? 12 : 14),
+                ),
+              ),
+              Text(
+                grouped,
+                style: TextStyle(
+                  fontSize: compact ? 11 : 12,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
     String mainValue = "";
 
     // 🔥 SERIES
-    if (exercise['series'] != null &&
-        exercise['reps'] != null) {
-      mainValue =
-          "${exercise['series']}×${exercise['reps']} reps";
+    if (exercise['series'] != null && exercise['reps'] != null) {
+      mainValue = "${exercise['series']}×${exercise['reps']} reps";
     }
-
     // 🔥 TIEMPO / REPS dinámico
-    else if (exercise['value'] != null &&
-        exercise['valueType'] != null) {
+    else if (exercise['value'] != null && exercise['valueType'] != null) {
       mainValue =
           exercise['valueType'] == "time"
               ? "${exercise['value']} s"
               : "${exercise['value']} reps";
     }
-
     // 🔥 SERIES DESCENDENTES (Muestra el arreglo de repeticiones de ser posible)
     else if (exercise['reps'] is List) {
       final repsList = exercise['reps'] as List;
       mainValue = "${repsList.join('-')} reps";
     }
 
-    final String sideLabel =
-        perSide ? " · por lado" : "";
+    final String sideLabel = perSide ? " · por lado" : "";
 
-    final String weightLabel =
-        weight > 0 ? " · ${weight}kg" : "";
+    final String weightLabel = weight > 0 ? " · ${weight}kg" : "";
 
-    final String rightText =
-        [mainValue, sideLabel, weightLabel]
-            .where((s) => s.isNotEmpty)
-            .join("");
+    final String rightText = [
+      mainValue,
+      sideLabel,
+      weightLabel,
+    ].where((s) => s.isNotEmpty).join("");
 
     return Padding(
-      padding: EdgeInsets.symmetric(
-        vertical: compact ? 4 : 6,
-      ),
+      padding: EdgeInsets.symmetric(vertical: compact ? 4 : 6),
       child: Row(
         children: [
-          Icon(
-            Icons.play_arrow,
-            size: compact ? 14 : 16,
-            color: Colors.grey,
-          ),
+          Icon(Icons.play_arrow, size: compact ? 14 : 16, color: Colors.grey),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
               exercise['name'] ?? '',
-              style: TextStyle(
-                fontSize: compact ? 12 : 14,
-              ),
+              style: TextStyle(fontSize: compact ? 12 : 14),
             ),
           ),
           Text(
             rightText,
-            style: TextStyle(
-              fontSize: compact ? 11 : 12,
-              color: Colors.grey,
-            ),
+            style: TextStyle(fontSize: compact ? 11 : 12, color: Colors.grey),
           ),
         ],
       ),

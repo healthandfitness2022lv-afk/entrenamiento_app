@@ -33,6 +33,14 @@ migrate_working_dir/
 .pub/
 /build/
 
+# Local secrets for admin access to Firebase/Firestore
+secrets/
+*.service-account.json
+firebase-admin-credentials.json
+serviceAccountKey.json
+*.env.local
+/tmp/
+
 # Symbolication related
 app.*.symbols
 
@@ -43,3 +51,37 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# --- Nexus AI: base ---
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+key.properties
+serviceAccount*.json
+*service-account*.json
+*.pem
+*.p12
+*-debug.log
+node_modules/
+build/
+dist/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.firebase/
+.idea/
+.gradle/
+.kotlin/
+local.properties
+.cxx/
+Pods/
+.venv/
+venv/
+__pycache__/
+.DS_Store
+Thumbs.db
+android/java_pid30844.hprof
+dartsdk.zip
+flutter_windows_3.29.0-stable.zip

@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+import '../models/exercise.dart';
+import '../utils/block_title_utils.dart';
+import '../theme/app_theme.dart';
+import '../widgets/exercise_note.dart';
 
 class AddWorkoutScreen extends StatefulWidget {
   final Map<String, dynamic>? initialBlock;
@@ -15,6 +19,15 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   String? blockType;
   final List<Map<String, dynamic>> currentExercises = [];
 
+  static const _blockTypes = <String>[
+    "Series",
+    "Circuito",
+    "EMOM",
+    "Tabata",
+    "Series descendentes",
+    "Buscar RM",
+  ];
+
   // ===== Bloque =====
   final workCtrl = TextEditingController();
   final restCtrl = TextEditingController();
@@ -23,13 +36,15 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   final descriptionCtrl = TextEditingController();
   final schemaCtrl = TextEditingController();
   final rmCtrl = TextEditingController();
-  String _folder = ""; // 👈 Ahora es interna, no se edita aquí
+  String _folder = "";
+  String? _athleteId; // null = General, ID = Atleta específico
   List<QueryDocumentSnapshot> _allExercises = [];
   bool _loadedExercises = false;
 
   // ===== Ejercicio =====
   // Multi-selection: tracks all exercises chosen before hitting "Agregar"
   final Set<String> pendingExercises = {};
+  final Map<String, ExerciseVariant> selectedVariantsByExercise = {};
   // For single-edit mode we still need the original exerciseName reference
   String? exerciseName;
   List<String> availableEquipment = [];
@@ -38,6 +53,8 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   final seriesCtrl = TextEditingController();
   final repsCtrl = TextEditingController();
   final weightCtrl = TextEditingController();
+  final setWeightsCtrl = TextEditingController();
+  final exerciseNotesCtrl = TextEditingController();
   late TextEditingController titleController;
 
   String valueType = "reps";
@@ -57,15 +74,19 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
     _loadExercises();
 
     titleController = TextEditingController(
-      text: widget.initialBlock?['title'] ?? '',
+      text:
+          widget.initialBlock?['title'] == null
+              ? ''
+              : visibleBlockTitle(widget.initialBlock?['title']),
     );
     descriptionCtrl.text = widget.initialBlock?['description'] ?? '';
     _folder = (widget.initialBlock?['folder'] ?? '').toString();
+    _athleteId = widget.initialBlock?['athleteId'];
 
     final b = widget.initialBlock;
+    blockType = (b?['type'] ?? "Series").toString();
+    if (!_blockTypes.contains(blockType)) blockType = "Series";
     if (b == null) return;
-
-    blockType = b["type"];
 
     if (blockType == "Tabata") {
       valueType = "time"; // 🔥 fuerza tiempo
@@ -90,6 +111,36 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
     emomTimeCtrl.text = b["time"]?.toString() ?? "";
   }
 
+  void _changeBlockType(String type) {
+    setState(() {
+      blockType = type;
+
+      // Give each system a usable starting point without touching the
+      // exercises already added to the block.
+      if (type == "Tabata") {
+        valueType = "time";
+        if (workCtrl.text.trim().isEmpty) workCtrl.text = "20";
+        if (restCtrl.text.trim().isEmpty) restCtrl.text = "10";
+        if (roundsCtrl.text.trim().isEmpty) roundsCtrl.text = "8";
+      } else {
+        if (type == "Circuito" && roundsCtrl.text.trim().isEmpty) {
+          roundsCtrl.text = "3";
+        }
+        if (type == "EMOM") {
+          if (emomTimeCtrl.text.trim().isEmpty) emomTimeCtrl.text = "60";
+          if (roundsCtrl.text.trim().isEmpty) roundsCtrl.text = "5";
+        }
+        if (type == "Series descendentes" && schemaCtrl.text.trim().isEmpty) {
+          schemaCtrl.text = "21-15-9";
+        }
+        if (type == "Buscar RM" && rmCtrl.text.trim().isEmpty) {
+          rmCtrl.text = "5";
+        }
+        if (valueType == "time") valueType = "reps";
+      }
+    });
+  }
+
   @override
   void dispose() {
     workCtrl.dispose();
@@ -102,6 +153,8 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
     seriesCtrl.dispose();
     repsCtrl.dispose();
     weightCtrl.dispose();
+    setWeightsCtrl.dispose();
+    exerciseNotesCtrl.dispose();
 
     titleController.dispose();
     descriptionCtrl.dispose();
@@ -112,8 +165,11 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   Future<void> _loadExercises() async {
     // Ejercicios
     final snap = await FirebaseFirestore.instance.collection("exercises").get();
-    _allExercises = snap.docs;
-    _allExercises.sort((a, b) => (a["name"] as String).compareTo(b["name"] as String));
+    _allExercises =
+        snap.docs.where((doc) => doc.data()['mergedInto'] == null).toList();
+    _allExercises.sort(
+      (a, b) => (a["name"] as String).compareTo(b["name"] as String),
+    );
 
     setState(() {
       _loadedExercises = true;
@@ -130,11 +186,22 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
       return;
     }
 
+    for (final exercise in currentExercises) {
+      final current = exercise['instanceId']?.toString().trim();
+      if (current == null || current.isEmpty) {
+        exercise['instanceId'] =
+            FirebaseFirestore.instance
+                .collection('exercise_instances')
+                .doc()
+                .id;
+      }
+    }
     final block = {
       "type": blockType,
       "title": titleController.text.trim(),
-      "description": descriptionCtrl.text.trim(), 
-      "folder": _folder, 
+      "description": descriptionCtrl.text.trim(),
+      "folder": _folder,
+      "athleteId": _athleteId,
       "exercises": List<Map<String, dynamic>>.from(currentExercises),
     };
 
@@ -186,16 +253,53 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
     setState(() {
       editingExerciseIndex = index;
 
-      exerciseName = e["name"];
+      final movementName =
+          (e['movementName'] ?? e['name'] ?? '').toString().split(' - ').first;
+      exerciseName = movementName;
       seriesCtrl.text = e["series"]?.toString() ?? "";
       repsCtrl.text = e["value"]?.toString() ?? "";
+      weightCtrl.text = e["weight"]?.toString() ?? "";
+      final plannedSets =
+          e['sets'] is List
+              ? List<Map<String, dynamic>>.from(e['sets'] as List)
+              : const <Map<String, dynamic>>[];
+      setWeightsCtrl.text = plannedSets
+          .map((set) => set['weight'])
+          .where((weight) => weight != null)
+          .map(_formatNumber)
+          .join(' / ');
       valueType = e["valueType"] ?? "reps";
       perSide = e["perSide"] ?? false;
+      exerciseNotesCtrl.text = (e['notes'] ?? '').toString();
 
       selectedEquipment = e["equipment"];
-      availableEquipment = selectedEquipment != null
-          ? [selectedEquipment!]
-          : [];
+      availableEquipment =
+          selectedEquipment != null ? [selectedEquipment!] : [];
+      final variantId = e['variantId']?.toString();
+      final exerciseId = e['exerciseId']?.toString();
+      if (variantId != null && exerciseId != null) {
+        final doc =
+            _allExercises.where((d) => d.id == exerciseId).firstOrNull ??
+            _allExercises
+                .where(
+                  (d) => ((d.data() as Map?)?['name'] ?? '') == movementName,
+                )
+                .firstOrNull;
+        if (doc != null) {
+          final movement = Exercise.fromFirestore(
+            Map<String, dynamic>.from(doc.data() as Map),
+            id: doc.id,
+          );
+          final variant =
+              movement.variants.where((v) => v.id == variantId).firstOrNull ??
+              movement.variants
+                  .where((v) => v.label == e['variantLabel'])
+                  .firstOrNull;
+          if (variant != null) {
+            selectedVariantsByExercise[movementName] = variant;
+          }
+        }
+      }
     });
   }
 
@@ -221,12 +325,47 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
     return double.parse(parsed.toStringAsFixed(2));
   }
 
+  String _formatNumber(dynamic value) {
+    final number = value is num ? value.toDouble() : double.tryParse('$value');
+    if (number == null) return '$value';
+    return number == number.roundToDouble()
+        ? number.toInt().toString()
+        : number
+            .toStringAsFixed(2)
+            .replaceFirst(RegExp(r'0+$'), '')
+            .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  List<num> _parseSetWeights() {
+    final raw = setWeightsCtrl.text.trim();
+    if (raw.isEmpty) return const [];
+    return raw
+        .split(RegExp(r'\s*(?:/|;)\s*'))
+        .where((part) => part.trim().isNotEmpty)
+        .map(_parseWeight)
+        .toList();
+  }
+
   void _addExercise() {
+    if (blockType == 'Series' && setWeightsCtrl.text.trim().isNotEmpty) {
+      final series = int.tryParse(seriesCtrl.text) ?? 1;
+      if (_parseSetWeights().length != series) {
+        _snack('Ingresa un peso por cada una de las $series series');
+        return;
+      }
+    }
+
     // In editing mode, behave as before (single exercise)
     if (editingExerciseIndex != null) {
-      if (exerciseName == null) { _snack("Selecciona un ejercicio"); return; }
+      if (exerciseName == null) {
+        _snack("Selecciona un ejercicio");
+        return;
+      }
       _commitSingleExercise(exerciseName!);
-      setState(() { editingExerciseIndex = null; _clearExerciseForm(); });
+      setState(() {
+        editingExerciseIndex = null;
+        _clearExerciseForm();
+      });
       return;
     }
 
@@ -235,8 +374,6 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
       _snack("Selecciona al menos un ejercicio");
       return;
     }
-
-    if (valueType == "time") perSide = false;
 
     if (blockType != "Tabata" &&
         blockType != "Series descendentes" &&
@@ -255,31 +392,110 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   }
 
   void _commitSingleExercise(String name) {
-    if (valueType == "time") perSide = false;
     final int parsedValue = int.tryParse(repsCtrl.text) ?? 0;
     final num parsedWeight = _parseWeight(weightCtrl.text);
 
+    final existingInstanceId =
+        editingExerciseIndex == null
+            ? null
+            : currentExercises[editingExerciseIndex!]['instanceId']?.toString();
+    final instanceId =
+        existingInstanceId ??
+        FirebaseFirestore.instance.collection('exercise_instances').doc().id;
     Map<String, dynamic> ex = {
       "name": name,
+      "instanceId": instanceId,
       "perSide": perSide,
       "equipment": selectedEquipment,
       "weight": parsedWeight,
     };
 
+    final catalogDoc =
+        _allExercises.where((doc) {
+          final data = Map<String, dynamic>.from(doc.data() as Map);
+          return data['name'] == name;
+        }).firstOrNull;
+    if (catalogDoc != null) {
+      final movement = Exercise.fromFirestore(
+        Map<String, dynamic>.from(catalogDoc.data() as Map),
+        id: catalogDoc.id,
+      );
+      final variant =
+          selectedVariantsByExercise[name] ??
+          (movement.variants.length == 1 ? movement.variants.first : null);
+      if (variant != null) {
+        final displayName = variant.displayName(
+          movement.name,
+          hideSingleVariantLabel: movement.variants.length == 1,
+        );
+        ex.addAll({
+          'name': displayName,
+          'movementName': movement.name,
+          'exerciseId': movement.id,
+          'movementId': movement.id,
+          'variantId': variant.id,
+          'variantLabel': variant.label,
+          'familyId': variant.familyId,
+          'exerciseType':
+              variant.exerciseType.isNotEmpty
+                  ? variant.exerciseType
+                  : movement.exerciseType,
+          'techniqueId': variant.techniqueId,
+          'techniqueLabel': variant.techniqueLabel,
+          'trainingDiscipline': variant.trainingDiscipline,
+          'movementIntent': variant.movementIntent,
+          'displayName': displayName,
+          'equipment': variant.equipment.join(', '),
+          'resistanceType': variant.resistanceType,
+          'trackRM': variant.trackRM,
+          'trackProgression': variant.trackProgression,
+          'isUnilateral': variant.isUnilateral,
+          if (variant.muscleWeightOverrides.isNotEmpty)
+            'muscleWeightOverrides': {
+              for (final entry in variant.muscleWeightOverrides.entries)
+                entry.key.name: entry.value,
+            },
+        });
+      }
+    }
+
     if (blockType == "Series") {
+      final series = int.tryParse(seriesCtrl.text) ?? 1;
+      final plannedWeights = _parseSetWeights();
+      final representativeWeight =
+          plannedWeights.isEmpty
+              ? parsedWeight
+              : plannedWeights.fold<double>(
+                    0,
+                    (sum, value) => sum + value.toDouble(),
+                  ) /
+                  plannedWeights.length;
+      ex['weight'] = representativeWeight;
       ex.addAll({
-        "series": int.tryParse(seriesCtrl.text) ?? 1,
+        "series": series,
+        "value": parsedValue,
+        "valueType": valueType,
+        if (valueType == "reps") "reps": parsedValue,
+        if (plannedWeights.isNotEmpty)
+          'sets': [
+            for (final weight in plannedWeights)
+              {'reps': parsedValue, 'weight': weight, 'perSide': perSide},
+          ],
+      });
+    }
+
+    if (blockType == "Circuito" || blockType == "EMOM") {
+      ex.addAll({
         "value": parsedValue,
         "valueType": valueType,
         if (valueType == "reps") "reps": parsedValue,
       });
     }
 
-    if (blockType == "Circuito" || blockType == "EMOM") {
-      ex.addAll({"value": parsedValue, "valueType": valueType});
-    }
-
     // Series descendentes / Buscar RM: solo peso y nombre
+
+    final notes = exerciseNotesCtrl.text.trim();
+    if (notes.isNotEmpty) ex['notes'] = notes;
 
     if (editingExerciseIndex != null) {
       currentExercises[editingExerciseIndex!] = ex;
@@ -291,6 +507,7 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   void _clearExerciseForm() {
     exerciseName = null;
     pendingExercises.clear();
+    selectedVariantsByExercise.clear();
     selectedEquipment = null;
     availableEquipment.clear();
     searchQuery = "";
@@ -298,6 +515,8 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
     seriesCtrl.clear();
     repsCtrl.clear();
     weightCtrl.text = "1";
+    setWeightsCtrl.clear();
+    exerciseNotesCtrl.clear();
     valueType = "reps";
     perSide = false;
   }
@@ -341,8 +560,13 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
             final dialogH = MediaQuery.of(context).size.height * 0.88;
 
             return Dialog(
-              insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 24,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: SizedBox(
                 width: dialogW,
                 height: dialogH,
@@ -354,8 +578,13 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
                       child: Row(
                         children: [
                           Text(
-                            editingExerciseIndex != null ? "Editar ejercicio" : "Agregar ejercicios",
-                            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                            editingExerciseIndex != null
+                                ? "Editar ejercicio"
+                                : "Agregar ejercicios",
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const Spacer(),
                           IconButton(
@@ -369,61 +598,99 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
 
                     // ── BODY ────────────────────────────────────
                     Expanded(
-                      child: isWide
-                          // Two-column layout for tablet / wide screen
-                          ? Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Left: search + list
-                                Expanded(
-                                  flex: 6,
-                                  child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
-                                    child: _exerciseSearchAndSelector(setSheetState: setSheetState),
-                                  ),
-                                ),
-                                const VerticalDivider(width: 1),
-                                // Right: selected chips + execution
-                                Expanded(
-                                  flex: 5,
-                                  child: SingleChildScrollView(
-                                    padding: const EdgeInsets.fromLTRB(12, 12, 16, 0),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        _selectedExercisesPanel(setSheetState: setSheetState),
-                                        const SizedBox(height: 12),
-                                        _executionInput(setSheetState: setSheetState),
-                                      ],
+                      child:
+                          isWide
+                              // Two-column layout for tablet / wide screen
+                              ? Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Left: search + list
+                                  Expanded(
+                                    flex: 6,
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        16,
+                                        12,
+                                        8,
+                                        0,
+                                      ),
+                                      child: _exerciseSearchAndSelector(
+                                        setSheetState: setSheetState,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
-                            )
-                          // Single-column layout for phones
-                          : SingleChildScrollView(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                              child: Column(
-                                children: [
-                                  _selectedExercisesPanel(setSheetState: setSheetState),
-                                  const SizedBox(height: 8),
-                                  _exerciseSearchAndSelector(setSheetState: setSheetState),
-                                  const SizedBox(height: 12),
-                                  _executionInput(setSheetState: setSheetState),
+                                  const VerticalDivider(width: 1),
+                                  // Right: selected chips + execution
+                                  Expanded(
+                                    flex: 5,
+                                    child: SingleChildScrollView(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        12,
+                                        12,
+                                        16,
+                                        0,
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          _selectedExercisesPanel(
+                                            setSheetState: setSheetState,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          _executionInput(
+                                            setSheetState: setSheetState,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ],
+                              )
+                              // Single-column layout for phones
+                              : SingleChildScrollView(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  0,
+                                ),
+                                child: Column(
+                                  children: [
+                                    _selectedExercisesPanel(
+                                      setSheetState: setSheetState,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _exerciseSearchAndSelector(
+                                      setSheetState: setSheetState,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _executionInput(
+                                      setSheetState: setSheetState,
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
                     ),
 
                     // ── STICKY FOOTER ────────────────────────────
                     const Divider(height: 1),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       child: SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          icon: Icon(editingExerciseIndex != null ? Icons.save : Icons.add),
-                          style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                          icon: Icon(
+                            editingExerciseIndex != null
+                                ? Icons.save
+                                : Icons.add,
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
                           onPressed: () {
                             _addExercise();
                             Navigator.pop(context);
@@ -432,8 +699,8 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
                             editingExerciseIndex != null
                                 ? "Guardar cambios"
                                 : pendingExercises.isEmpty
-                                    ? "Agregar ejercicio"
-                                    : "Agregar ${pendingExercises.length} ejercicio${pendingExercises.length > 1 ? 's' : ''}",
+                                ? "Agregar ejercicio"
+                                : "Agregar ${pendingExercises.length} ejercicio${pendingExercises.length > 1 ? 's' : ''}",
                             style: const TextStyle(fontSize: 15),
                           ),
                         ),
@@ -451,29 +718,49 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
 
   /// Panel showing currently selected exercise chips (used in right column)
   Widget _selectedExercisesPanel({required StateSetter setSheetState}) {
-    if (pendingExercises.isEmpty && !(editingExerciseIndex != null && exerciseName != null)) {
+    if (pendingExercises.isEmpty &&
+        !(editingExerciseIndex != null && exerciseName != null)) {
       return const SizedBox.shrink();
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Seleccionados", style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w600)),
+        const Text(
+          "Seleccionados",
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 6),
         Wrap(
           spacing: 6,
           runSpacing: 4,
           children: [
-            ...pendingExercises.map((name) => Chip(
-              label: Text(name, style: const TextStyle(fontSize: 12)),
-              deleteIcon: const Icon(Icons.close, size: 13),
-              onDeleted: () => setSheetState(() => pendingExercises.remove(name)),
-              backgroundColor: Colors.green.withOpacity(0.12),
-              side: const BorderSide(color: Colors.green, width: 0.5),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            )),
+            ...pendingExercises.map(
+              (name) => Chip(
+                label: Text(
+                  selectedVariantsByExercise[name]?.displayName(name) ?? name,
+                  style: const TextStyle(fontSize: 12),
+                ),
+                deleteIcon: const Icon(Icons.close, size: 13),
+                onDeleted:
+                    () => setSheetState(() {
+                      pendingExercises.remove(name);
+                      selectedVariantsByExercise.remove(name);
+                    }),
+                backgroundColor: Colors.green.withOpacity(0.12),
+                side: const BorderSide(color: Colors.green, width: 0.5),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
             if (editingExerciseIndex != null && exerciseName != null)
               Chip(
-                label: Text(exerciseName!, style: const TextStyle(fontSize: 12)),
+                label: Text(
+                  exerciseName!,
+                  style: const TextStyle(fontSize: 12),
+                ),
                 avatar: const Icon(Icons.edit, size: 13),
                 backgroundColor: Colors.blue.withOpacity(0.12),
               ),
@@ -483,12 +770,6 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
       ],
     );
   }
-
-  Widget _buildExerciseForm({required StateSetter setSheetState}) {
-    // Kept for legacy usage if needed, but dialog now composes panels directly.
-    return const SizedBox.shrink();
-  }
-
 
   // =====================================================
   // BUILD
@@ -545,17 +826,26 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
                     child: const Icon(Icons.drag_handle),
                   ),
                   title: Text(e["name"]),
-                  subtitle: Text(
-  blockType == "Tabata"
-      ? "Trabajo ${workCtrl.text}s"
-      : blockType == "Series descendentes"
-          ? "Esquema ${schemaCtrl.text}"
-          : blockType == "Buscar RM"
-              ? "Buscar ${rmCtrl.text} RM"
-              : "${e["series"] != null ? "${e["series"]}×" : ""}"
-            "${e["value"] ?? ""} "
-            "${e["valueType"] == "time" ? "seg" : "reps"}",
-),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        blockType == "Tabata"
+                            ? "Trabajo ${workCtrl.text}s"
+                            : blockType == "Series descendentes"
+                            ? "Esquema ${schemaCtrl.text}"
+                            : blockType == "Buscar RM"
+                            ? "Buscar ${rmCtrl.text} RM"
+                            : "${e["series"] != null ? "${e["series"]}×" : ""}"
+                                "${e["value"] ?? ""} "
+                                "${e["valueType"] == "time" ? "seg" : "reps"}",
+                      ),
+                      ExerciseNote(
+                        e['notes'],
+                        padding: const EdgeInsets.only(top: 4),
+                      ),
+                    ],
+                  ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -568,9 +858,10 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
                       ),
                       IconButton(
                         icon: const Icon(Icons.delete),
-                        onPressed: () => setState(() {
-                          currentExercises.removeAt(index);
-                        }),
+                        onPressed:
+                            () => setState(() {
+                              currentExercises.removeAt(index);
+                            }),
                       ),
                     ],
                   ),
@@ -587,172 +878,272 @@ class _AddWorkoutScreenState extends State<AddWorkoutScreen> {
   // UI HELPERS
   // =====================================================
 
-Widget _exerciseSearchAndSelector({required StateSetter setSheetState}) {
-  if (!_loadedExercises) {
-    return const Padding(
-      padding: EdgeInsets.all(16),
-      child: CircularProgressIndicator(),
+  Widget _exerciseSearchAndSelector({required StateSetter setSheetState}) {
+    if (!_loadedExercises) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    // Extract all unique exercise types dynamically
+    final allTypes =
+        _allExercises
+            .map((d) => (d['exerciseType'] ?? 'Otros').toString())
+            .toSet()
+            .toList()
+          ..sort();
+
+    final query = searchQuery.trim().toLowerCase();
+
+    final filtered =
+        _allExercises.where((d) {
+          final name = (d['name'] as String).toLowerCase().trim();
+          final type = (d['exerciseType'] ?? 'Otros').toString();
+          final matchesQuery = query.isEmpty || name.contains(query);
+          final matchesType =
+              selectedTypeFilter == null || type == selectedTypeFilter;
+          return matchesQuery && matchesType;
+        }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+
+        // ── Search field ─────────────────────────────────────
+        TextField(
+          decoration: const InputDecoration(
+            hintText: "Buscar ejercicio...",
+            prefixIcon: Icon(Icons.search),
+            isDense: true,
+          ),
+          onChanged: (v) => setSheetState(() => searchQuery = v),
+        ),
+
+        const SizedBox(height: 10),
+
+        // ── Category filter chips ────────────────────────────
+        SizedBox(
+          height: 36,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              // "Todos" chip
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  label: const Text("Todos"),
+                  selected: selectedTypeFilter == null,
+                  onSelected:
+                      (_) => setSheetState(() => selectedTypeFilter = null),
+                  selectedColor: Colors.blue.withOpacity(0.2),
+                ),
+              ),
+              ...allTypes.map(
+                (t) => Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: FilterChip(
+                    label: Text(t),
+                    selected: selectedTypeFilter == t,
+                    onSelected:
+                        (_) => setSheetState(() {
+                          selectedTypeFilter =
+                              selectedTypeFilter == t ? null : t;
+                        }),
+                    selectedColor: Colors.blue.withOpacity(0.2),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // ── Results count ────────────────────────────────────
+        Text(
+          "${filtered.length} ejercicios${pendingExercises.isNotEmpty ? ' · ${pendingExercises.length} seleccionados' : ''}",
+          style: const TextStyle(fontSize: 11, color: Colors.grey),
+        ),
+
+        const SizedBox(height: 6),
+
+        // ── Exercise list ────────────────────────────────────
+        if (filtered.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text("Sin resultados"),
+          )
+        else
+          SizedBox(
+            height: 240,
+            child: ListView.builder(
+              itemCount: filtered.length,
+              itemBuilder: (_, i) {
+                final data = filtered[i].data() as Map<String, dynamic>;
+                final name = data['name'] as String;
+                final isSelected =
+                    pendingExercises.contains(name) ||
+                    (editingExerciseIndex != null && exerciseName == name);
+                final typeLabel = (data['exerciseType'] ?? '').toString();
+
+                return InkWell(
+                  onTap: () async {
+                    if (pendingExercises.contains(name) &&
+                        editingExerciseIndex == null) {
+                      setSheetState(() {
+                        pendingExercises.remove(name);
+                        selectedVariantsByExercise.remove(name);
+                      });
+                      return;
+                    }
+                    final movement = Exercise.fromFirestore(
+                      data,
+                      id: filtered[i].id,
+                    );
+                    final variant = await _chooseVariant(movement);
+                    if (variant == null || !mounted) return;
+                    setSheetState(() {
+                      if (editingExerciseIndex != null) {
+                        exerciseName = name;
+                        selectedVariantsByExercise[name] = variant;
+                      } else {
+                        pendingExercises.add(name);
+                        selectedVariantsByExercise[name] = variant;
+                        if (pendingExercises.length == 1) {
+                          availableEquipment = variant.equipment;
+                          selectedEquipment =
+                              variant.equipment.isEmpty
+                                  ? null
+                                  : variant.equipment.join(', ');
+                        }
+                      }
+                    });
+                  },
+                  child: Container(
+                    color: isSelected ? Colors.green.withOpacity(0.08) : null,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        // Checkbox-style indicator
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color:
+                                isSelected ? Colors.green : Colors.transparent,
+                            border: Border.all(
+                              color: isSelected ? Colors.green : Colors.grey,
+                              width: 1.5,
+                            ),
+                          ),
+                          child:
+                              isSelected
+                                  ? const Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                    size: 13,
+                                  )
+                                  : null,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(name, style: const TextStyle(fontSize: 14)),
+                              if (typeLabel.isNotEmpty)
+                                Text(
+                                  selectedVariantsByExercise[name] == null
+                                      ? typeLabel
+                                      : '$typeLabel · ${selectedVariantsByExercise[name]!.label}',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
     );
   }
 
-  // Extract all unique exercise types dynamically
-  final allTypes = _allExercises
-      .map((d) => (d['exerciseType'] ?? 'Otros').toString())
-      .toSet()
-      .toList()
-    ..sort();
-
-  final query = searchQuery.trim().toLowerCase();
-
-  final filtered = _allExercises.where((d) {
-    final name = (d['name'] as String).toLowerCase().trim();
-    final type = (d['exerciseType'] ?? 'Otros').toString();
-    final matchesQuery = query.isEmpty || name.contains(query);
-    final matchesType = selectedTypeFilter == null || type == selectedTypeFilter;
-    return matchesQuery && matchesType;
-  }).toList();
-
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const SizedBox(height: 8),
-
-      // ── Search field ─────────────────────────────────────
-      TextField(
-        decoration: const InputDecoration(
-          hintText: "Buscar ejercicio...",
-          prefixIcon: Icon(Icons.search),
-          isDense: true,
-        ),
-        onChanged: (v) => setSheetState(() => searchQuery = v),
-      ),
-
-      const SizedBox(height: 10),
-
-      // ── Category filter chips ────────────────────────────
-      SizedBox(
-        height: 36,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          children: [
-            // "Todos" chip
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: FilterChip(
-                label: const Text("Todos"),
-                selected: selectedTypeFilter == null,
-                onSelected: (_) => setSheetState(() => selectedTypeFilter = null),
-                selectedColor: Colors.blue.withOpacity(0.2),
-              ),
-            ),
-            ...allTypes.map((t) => Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: FilterChip(
-                label: Text(t),
-                selected: selectedTypeFilter == t,
-                onSelected: (_) => setSheetState(() {
-                  selectedTypeFilter = selectedTypeFilter == t ? null : t;
-                }),
-                selectedColor: Colors.blue.withOpacity(0.2),
-              ),
-            )),
-          ],
-        ),
-      ),
-
-      const SizedBox(height: 8),
-
-      // ── Results count ────────────────────────────────────
-      Text(
-        "${filtered.length} ejercicios${pendingExercises.isNotEmpty ? ' · ${pendingExercises.length} seleccionados' : ''}",
-        style: const TextStyle(fontSize: 11, color: Colors.grey),
-      ),
-
-      const SizedBox(height: 6),
-
-      // ── Exercise list ────────────────────────────────────
-      if (filtered.isEmpty)
-        const Padding(
-          padding: EdgeInsets.all(16),
-          child: Text("Sin resultados"),
-        )
-      else
-        SizedBox(
-          height: 240,
-          child: ListView.builder(
-            itemCount: filtered.length,
-            itemBuilder: (_, i) {
-              final data = filtered[i].data() as Map<String, dynamic>;
-              final name = data['name'] as String;
-              final isSelected = pendingExercises.contains(name)
-                  || (editingExerciseIndex != null && exerciseName == name);
-              final typeLabel = (data['exerciseType'] ?? '').toString();
-
-              return InkWell(
-                onTap: () {
-                  setSheetState(() {
-                    if (editingExerciseIndex != null) {
-                      // Single-select for edit mode
-                      exerciseName = name;
-                    } else {
-                      // Toggle multi-select
-                      if (pendingExercises.contains(name)) {
-                        pendingExercises.remove(name);
-                      } else {
-                        pendingExercises.add(name);
-                        // Carry over equipment from first selected exercise
-                        if (pendingExercises.length == 1) {
-                          availableEquipment = List<String>.from(data['equipment'] ?? []);
-                          selectedEquipment = availableEquipment.isNotEmpty ? availableEquipment.first : null;
-                        }
-                      }
-                    }
-                  });
-                },
-                child: Container(
-                  color: isSelected ? Colors.green.withOpacity(0.08) : null,
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                  child: Row(
-                    children: [
-                      // Checkbox-style indicator
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        width: 22,
-                        height: 22,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isSelected ? Colors.green : Colors.transparent,
-                          border: Border.all(
-                            color: isSelected ? Colors.green : Colors.grey,
-                            width: 1.5,
+  Future<ExerciseVariant?> _chooseVariant(Exercise exercise) async {
+    if (exercise.variants.length == 1) return exercise.variants.first;
+    return showDialog<ExerciseVariant>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: Text('${exercise.name}: elegir variante'),
+            content: SizedBox(
+              width: 520,
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final group
+                      in exercise.variants
+                          .map(
+                            (v) =>
+                                v.techniqueLabel.isEmpty
+                                    ? v.group
+                                    : v.techniqueLabel,
+                          )
+                          .toSet()) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 4),
+                      child: Text(
+                        group.toUpperCase(),
+                        style: const TextStyle(
+                          color: AppColors.accent,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    ...exercise.variants
+                        .where(
+                          (v) =>
+                              (v.techniqueLabel.isEmpty
+                                  ? v.group
+                                  : v.techniqueLabel) ==
+                              group,
+                        )
+                        .map(
+                          (variant) => ListTile(
+                            title: Text(variant.label),
+                            subtitle: Text(
+                              '${variant.equipment.join(', ')} · ${variant.trainingDiscipline}',
+                            ),
+                            trailing:
+                                variant.needsReview
+                                    ? const Icon(
+                                      Icons.warning_amber,
+                                      color: Colors.amber,
+                                    )
+                                    : null,
+                            onTap: () => Navigator.pop(dialogContext, variant),
                           ),
                         ),
-                        child: isSelected
-                            ? const Icon(Icons.check, color: Colors.white, size: 13)
-                            : null,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(name, style: const TextStyle(fontSize: 14)),
-                            if (typeLabel.isNotEmpty)
-                              Text(typeLabel, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+                  ],
+                ],
+              ),
+            ),
           ),
-        ),
-    ],
-  );
-}
-
+    );
+  }
 
   Widget _executionInput({required StateSetter setSheetState}) {
     return Column(
@@ -768,14 +1159,22 @@ Widget _exerciseSearchAndSelector({required StateSetter setSheetState}) {
         if (blockType != "Series descendentes" && blockType != "Buscar RM") ...[
           SegmentedButton<String>(
             segments: const [
-              ButtonSegment(value: "reps", label: Text("Reps"), icon: Icon(Icons.repeat, size: 14)),
-              ButtonSegment(value: "time", label: Text("Tiempo"), icon: Icon(Icons.timer_outlined, size: 14)),
+              ButtonSegment(
+                value: "reps",
+                label: Text("Reps"),
+                icon: Icon(Icons.repeat, size: 14),
+              ),
+              ButtonSegment(
+                value: "time",
+                label: Text("Tiempo"),
+                icon: Icon(Icons.timer_outlined, size: 14),
+              ),
             ],
             selected: {valueType},
-            onSelectionChanged: (s) => setSheetState(() {
-              valueType = s.first;
-              if (valueType == "time") perSide = false;
-            }),
+            onSelectionChanged:
+                (s) => setSheetState(() {
+                  valueType = s.first;
+                }),
           ),
           const SizedBox(height: 12),
         ],
@@ -819,9 +1218,13 @@ Widget _exerciseSearchAndSelector({required StateSetter setSheetState}) {
               width: 110,
               child: TextField(
                 controller: weightCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'^\d+([.,]\d{0,2})?$')),
+                  FilteringTextInputFormatter.allow(
+                    RegExp(r'^\d+([.,]\d{0,2})?$'),
+                  ),
                 ],
                 textAlign: TextAlign.center,
                 decoration: const InputDecoration(
@@ -835,7 +1238,22 @@ Widget _exerciseSearchAndSelector({required StateSetter setSheetState}) {
         ),
 
         // ── Per side checkbox ────────────────────────────────
-        if (valueType == "reps" && blockType != "Series descendentes" && blockType != "Buscar RM") ...[
+        if (blockType == 'Series') ...[
+          const SizedBox(height: 10),
+          TextField(
+            controller: setWeightsCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Pesos por serie (opcional)',
+              hintText: 'Ejemplo: 60 / 65 / 70 / 70',
+              helperText: 'Separa cada carga con / o ;',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+
+        if (blockType != "Series descendentes" && blockType != "Buscar RM") ...[
           const SizedBox(height: 8),
           InkWell(
             onTap: () => setSheetState(() => perSide = !perSide),
@@ -856,10 +1274,24 @@ Widget _exerciseSearchAndSelector({required StateSetter setSheetState}) {
             ),
           ),
         ],
+
+        const SizedBox(height: 10),
+        TextField(
+          controller: exerciseNotesCtrl,
+          minLines: 1,
+          maxLines: 3,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            labelText: 'Nota del ejercicio (opcional)',
+            hintText: 'Ejemplo: de rodillas si cuesta mantener la zona lumbar',
+            prefixIcon: Icon(Icons.sticky_note_2_outlined),
+            isDense: true,
+            border: OutlineInputBorder(),
+          ),
+        ),
       ],
     );
   }
-
 
   Widget _blockConfigCard() => Card(
     child: Padding(
@@ -890,9 +1322,33 @@ Widget _exerciseSearchAndSelector({required StateSetter setSheetState}) {
 
           const SizedBox(height: 12),
 
+          DropdownButtonFormField<String>(
+            value: _blockTypes.contains(blockType) ? blockType : "Series",
+            decoration: const InputDecoration(
+              labelText: "Sistema de entrenamiento",
+              helperText:
+                  "Puedes cambiarlo al editar y conservar los ejercicios",
+              prefixIcon: Icon(Icons.account_tree_outlined),
+              border: OutlineInputBorder(),
+            ),
+            items:
+                _blockTypes
+                    .map(
+                      (type) => DropdownMenuItem<String>(
+                        value: type,
+                        child: Text(type),
+                      ),
+                    )
+                    .toList(),
+            onChanged: (type) {
+              if (type != null) _changeBlockType(type);
+            },
+          ),
+
           const SizedBox(height: 12),
           if (blockType == "Series descendentes") _schemaInput(),
-          if (blockType == "Buscar RM") _num(rmCtrl, "RM a buscar (por defecto: 5)"),
+          if (blockType == "Buscar RM")
+            _num(rmCtrl, "RM a buscar (por defecto: 5)"),
 
           if (blockType == "Tabata") ...[
             _num(workCtrl, "Trabajo (seg)"),
@@ -904,6 +1360,104 @@ Widget _exerciseSearchAndSelector({required StateSetter setSheetState}) {
             _num(emomTimeCtrl, "Tiempo por ronda (seg)"),
             _num(roundsCtrl, "Rondas"),
           ],
+
+          const Divider(height: 32),
+
+          // 🔒 ASIGNACIÓN (PÚBLICO / PRIVADO)
+          const Text(
+            "Visibilidad y Asignación",
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => _athleteId = null),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color:
+                          _athleteId == null
+                              ? Colors.blue.withOpacity(0.1)
+                              : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color:
+                            _athleteId == null
+                                ? Colors.blue
+                                : Colors.grey.shade800,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.public,
+                          color: _athleteId == null ? Colors.blue : Colors.grey,
+                        ),
+                        const Text("General", style: TextStyle(fontSize: 12)),
+                        const Text(
+                          "(Ver todos)",
+                          style: TextStyle(fontSize: 10, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: InkWell(
+                  onTap: () {
+                    final targetId =
+                        widget.initialBlock?['athleteId'] ??
+                        widget.initialBlock?['contextAthleteId'];
+                    if (targetId != null) {
+                      setState(() => _athleteId = targetId);
+                    } else {
+                      _snack(
+                        "No se puede asignar: Abre el editor desde la vista de un atleta",
+                      );
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color:
+                          _athleteId != null
+                              ? Colors.orange.withOpacity(0.1)
+                              : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color:
+                            _athleteId != null
+                                ? Colors.orange
+                                : Colors.grey.shade800,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.person,
+                          color:
+                              _athleteId != null ? Colors.orange : Colors.grey,
+                        ),
+                        const Text("Privado", style: TextStyle(fontSize: 12)),
+                        const Text(
+                          "(Solo este atleta)",
+                          style: TextStyle(fontSize: 10, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     ),

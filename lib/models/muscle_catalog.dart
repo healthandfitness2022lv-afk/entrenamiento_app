@@ -14,7 +14,6 @@ enum Muscle {
   // Pecho
   chest,
   upperChest, // 🔥 NUEVO
-
   // Hombros
   frontDelts,
   midDelts,
@@ -40,7 +39,6 @@ enum Muscle {
   psoas,
   serratus,
 }
-
 
 // ======================================================
 // 🏷️ LABELS EN ESPAÑOL (UI)
@@ -131,8 +129,7 @@ String normalizeKey(String input) {
 // ======================================================
 // 📋 CATÁLOGO VISIBLE (SELECTORES / AUTOCOMPLETE)
 // ======================================================
-final List<String> muscleCatalog =
-    Muscle.values.map((m) => m.label).toList();
+final List<String> muscleCatalog = Muscle.values.map((m) => m.label).toList();
 
 // ======================================================
 // 🧠 CATÁLOGO → ENUM (PONDERACIÓN BASE)
@@ -150,14 +147,13 @@ final Map<String, Map<Muscle, double>> muscleCatalogMap = {
   "Pectorales": {Muscle.chest: 1.0},
   "Pectoral superior": {Muscle.upperChest: 1.0},
 
-
   // Espalda
-"Dorsales": {Muscle.lats: 1.0},
-"Redondo": {Muscle.midBack: 1.0},
-"Trapecio superior": {Muscle.trapsUpper: 1.0},
-"Trapecio inferior": {Muscle.lowerTraps: 1.0},
-"Lumbares": {Muscle.lowerBack: 1.0},
-"Romboides": {Muscle.rombs: 1.0},
+  "Dorsales": {Muscle.lats: 1.0},
+  "Redondo": {Muscle.midBack: 1.0},
+  "Trapecio superior": {Muscle.trapsUpper: 1.0},
+  "Trapecio inferior": {Muscle.lowerTraps: 1.0},
+  "Lumbares": {Muscle.lowerBack: 1.0},
+  "Romboides": {Muscle.rombs: 1.0},
 
   // Hombros
   "Deltoides anterior": {Muscle.frontDelts: 1.0},
@@ -191,14 +187,7 @@ final Map<String, Map<Muscle, double>> normalizedMuscleCatalogMap = {
 // 🧩 GRUPOS ANATÓMICOS
 // ======================================================
 
-enum AnatomicalGroup {
-  hombros,
-  pecho,
-  espalda,
-  piernas,
-  core,
-  brazos,
-}
+enum AnatomicalGroup { hombros, pecho, espalda, piernas, core, brazos }
 
 const Map<AnatomicalGroup, List<Muscle>> anatomicalGroups = {
   AnatomicalGroup.hombros: [
@@ -206,17 +195,13 @@ const Map<AnatomicalGroup, List<Muscle>> anatomicalGroups = {
     Muscle.midDelts,
     Muscle.rearDelts,
   ],
-  AnatomicalGroup.pecho: [
-    Muscle.chest,
-    Muscle.upperChest,
-  ],
+  AnatomicalGroup.pecho: [Muscle.chest, Muscle.upperChest],
   AnatomicalGroup.espalda: [
     Muscle.lats,
     Muscle.rombs,
     Muscle.midBack,
     Muscle.trapsUpper,
     Muscle.lowerTraps,
-    
   ],
   AnatomicalGroup.piernas: [
     Muscle.quads,
@@ -234,24 +219,14 @@ const Map<AnatomicalGroup, List<Muscle>> anatomicalGroups = {
     Muscle.lowerBack,
     Muscle.serratus,
   ],
-  AnatomicalGroup.brazos: [
-    Muscle.biceps,
-    Muscle.triceps,
-    Muscle.forearms,
-    
-  ],
+  AnatomicalGroup.brazos: [Muscle.biceps, Muscle.triceps, Muscle.forearms],
 };
 
 // ======================================================
 // 🔄 GRUPOS FUNCIONALES
 // ======================================================
 
-enum FunctionalGroup {
-  upperPush,
-  upperPull,
-  lowerBody,
-  coreStability,
-}
+enum FunctionalGroup { upperPush, upperPull, lowerBody, coreStability }
 
 const Map<FunctionalGroup, List<Muscle>> functionalGroups = {
   FunctionalGroup.upperPush: [
@@ -270,7 +245,6 @@ const Map<FunctionalGroup, List<Muscle>> functionalGroups = {
     Muscle.rearDelts,
     Muscle.biceps,
     Muscle.forearms,
-
   ],
 
   FunctionalGroup.lowerBody: [
@@ -279,7 +253,7 @@ const Map<FunctionalGroup, List<Muscle>> functionalGroups = {
     Muscle.glutes,
     Muscle.midGlutes,
     Muscle.calves,
-    Muscle.adductors
+    Muscle.adductors,
   ],
   FunctionalGroup.coreStability: [
     Muscle.abs,
@@ -287,10 +261,9 @@ const Map<FunctionalGroup, List<Muscle>> functionalGroups = {
     Muscle.obliques,
     Muscle.psoas,
     Muscle.lowerBack,
-      Muscle.serratus,
+    Muscle.serratus,
   ],
 };
-
 
 extension AnatomicalGroupLabel on AnatomicalGroup {
   String get label {
@@ -367,7 +340,7 @@ extension MuscleRecovery on Muscle {
       case Muscle.glutes:
       case Muscle.midGlutes:
       case Muscle.adductors:
-        return 0.75;
+        return 0.74;
     }
   }
 }

@@ -9,6 +9,8 @@ class TabataTimerService extends ChangeNotifier {
 
   TabataTimerService() {
     _audioPlayer = AudioPlayer();
+    _audioPlayer.setReleaseMode(ReleaseMode.stop);
+    _audioPlayer.setVolume(1.0);
     if (!kIsWeb) {
       _audioPlayer.setAudioContext(
         AudioContext(
@@ -27,6 +29,14 @@ class TabataTimerService extends ChangeNotifier {
   // =========================================================
 
   Timer? _timer;
+
+  /// Fin de la fase actual según el reloj real. El tick solo refresca la UI:
+  /// en web el navegador frena `Timer.periodic` con la pestaña en segundo
+  /// plano, así que contar ticks atrasaría el Tabata.
+  DateTime? _phaseEndsAt;
+
+  /// Se llama cuando el bloque termina solo (no con `stop`), para pedir RPE.
+  void Function(int blockIndex)? onBlockFinished;
 
   int _currentRound = 1;
   int _exerciseIndex = 0;
@@ -56,8 +66,8 @@ class TabataTimerService extends ChangeNotifier {
 
   Future<void> _play(String asset) async {
     try {
-      await _audioPlayer.setVolume(1.0);
-      await _audioPlayer.setReleaseMode(ReleaseMode.stop);
+      // Sin awaits previos: en web (Safari iOS) el primer play debe ocurrir
+      // dentro del gesto del usuario que inicia el Tabata.
       await _audioPlayer.play(AssetSource(asset));
     } catch (e) {
       debugPrint("Audio error: $e");
@@ -92,8 +102,7 @@ class TabataTimerService extends ChangeNotifier {
 
   bool isCompleted(int blockIndex) => _completedBlocks.contains(blockIndex);
 
-  Map<String, int>? getRpeResults(int blockIndex) =>
-      _rpeResults[blockIndex];
+  Map<String, int>? getRpeResults(int blockIndex) => _rpeResults[blockIndex];
 
   Map<int, Map<String, int>> get allResults => _rpeResults;
 
@@ -112,9 +121,8 @@ class TabataTimerService extends ChangeNotifier {
 
     _activeBlockIndex = blockIndex;
     _startedBlocks.add(blockIndex);
-_completedBlocks.remove(blockIndex);
-_rpeResults.remove(blockIndex);
-
+    _completedBlocks.remove(blockIndex);
+    _rpeResults.remove(blockIndex);
 
     _workSeconds = workSeconds;
     _restSeconds = restSeconds;
@@ -126,98 +134,89 @@ _rpeResults.remove(blockIndex);
     _phase = TabataPhase.work;
     _phaseTotal = _workSeconds;
     _secondsLeft = _workSeconds;
+    _phaseEndsAt = DateTime.now().add(Duration(seconds: _workSeconds));
 
     _soundWork();
 
-    _timer = Timer.periodic(
-      const Duration(seconds: 1),
-      _tick,
-    );
+    _timer = Timer.periodic(const Duration(milliseconds: 250), _tick);
 
     notifyListeners();
   }
 
+  void completeBlockWithRpe(int blockIndex, Map<String, int> rpeByExercise) {
+    _completedBlocks.add(blockIndex);
+    _rpeResults[blockIndex] = rpeByExercise;
+    notifyListeners();
+  }
 
-  void completeBlockWithRpe(
-  int blockIndex,
-  Map<String, int> rpeByExercise,
-) {
-  _completedBlocks.add(blockIndex);
-  _rpeResults[blockIndex] = rpeByExercise;
-  notifyListeners();
-}
+  void markBlockHydrated(int blockIndex, Map<String, int> rpeByExercise) {
+    _startedBlocks.add(blockIndex);
+    _completedBlocks.add(blockIndex);
+    _rpeResults[blockIndex] = rpeByExercise;
+  }
 
-
-void markBlockHydrated(
-  int blockIndex,
-  Map<String, int> rpeByExercise,
-) {
-  _startedBlocks.add(blockIndex);
-  _completedBlocks.add(blockIndex);
-  _rpeResults[blockIndex] = rpeByExercise;
-}
-
-
-void resetBlock(int blockIndex) {
-  _startedBlocks.remove(blockIndex);
-  _completedBlocks.remove(blockIndex);
-  _rpeResults.remove(blockIndex);
-  notifyListeners();
-}
-
-
+  void resetBlock(int blockIndex) {
+    _startedBlocks.remove(blockIndex);
+    _completedBlocks.remove(blockIndex);
+    _rpeResults.remove(blockIndex);
+    notifyListeners();
+  }
 
   // =========================================================
   // ⏱ TICK
   // =========================================================
 
   void _tick(Timer timer) {
-    _secondsLeft--;
+    final end = _phaseEndsAt;
+    if (end == null) return;
+
+    final now = DateTime.now();
+    var endsAt = end;
+    var changedPhase = false;
+
+    // Avanza todas las fases vencidas (más de una si el navegador frenó el
+    // timer), sonando solo la transición final.
+    while (!now.isBefore(endsAt)) {
+      changedPhase = true;
+      if (_phase == TabataPhase.work) {
+        _phase = TabataPhase.rest;
+        _phaseTotal = _restSeconds;
+      } else {
+        _phase = TabataPhase.work;
+        _phaseTotal = _workSeconds;
+        _exerciseIndex++;
+        if (_exerciseIndex >= _exercises.length) {
+          _exerciseIndex = 0;
+          _currentRound++;
+        }
+        if (_currentRound > _totalRounds) {
+          _currentRound = _totalRounds;
+          _exerciseIndex = _exercises.length - 1;
+          _finishBlock();
+          return;
+        }
+      }
+      endsAt = endsAt.add(Duration(seconds: _phaseTotal));
+    }
+    _phaseEndsAt = endsAt;
+
+    final remaining = (endsAt.difference(now).inMilliseconds / 1000).ceil();
+
+    if (changedPhase) {
+      _secondsLeft = remaining;
+      _phase == TabataPhase.work ? _soundWork() : _soundRest();
+      notifyListeners();
+      return;
+    }
+
+    if (remaining == _secondsLeft) return;
+    _secondsLeft = remaining;
 
     // 🔔 Beep últimos 3 segundos
     if (_secondsLeft <= 3 && _secondsLeft > 0) {
       _soundBeep();
     }
 
-    notifyListeners();
-
-    if (_secondsLeft > 0) return;
-
-    // =====================================================
-    // CAMBIO DE FASE
-    // =====================================================
-
-    if (_phase == TabataPhase.work) {
-      _phase = TabataPhase.rest;
-      _phaseTotal = _restSeconds;
-      _secondsLeft = _restSeconds;
-
-      _soundRest();
-      notifyListeners();
-      return;
-    }
-
-    // =====================================================
-    // SIGUIENTE EJERCICIO / RONDA
-    // =====================================================
-
-    _phase = TabataPhase.work;
-    _exerciseIndex++;
-
-    if (_exerciseIndex >= _exercises.length) {
-      _exerciseIndex = 0;
-      _currentRound++;
-    }
-
-    if (_currentRound > _totalRounds) {
-      _finishBlock();
-      return;
-    }
-
-    _phaseTotal = _workSeconds;
-    _secondsLeft = _workSeconds;
-
-    _soundWork();
     notifyListeners();
   }
 
@@ -228,15 +227,20 @@ void resetBlock(int blockIndex) {
   void _finishBlock() {
     _timer?.cancel();
     _timer = null;
+    _phaseEndsAt = null;
+    _secondsLeft = 0;
 
     _phase = TabataPhase.finished;
 
-    if (_activeBlockIndex != null) {
-      _completedBlocks.add(_activeBlockIndex!);
+    final blockIndex = _activeBlockIndex;
+    if (blockIndex != null) {
+      _completedBlocks.add(blockIndex);
     }
 
     _soundFinish();
     notifyListeners();
+
+    if (blockIndex != null) onBlockFinished?.call(blockIndex);
   }
 
   // =========================================================
@@ -246,6 +250,7 @@ void resetBlock(int blockIndex) {
   void stop() {
     _timer?.cancel();
     _timer = null;
+    _phaseEndsAt = null;
     notifyListeners();
   }
 

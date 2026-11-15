@@ -1,6 +1,7 @@
 // lib/services/fatigue_service.dart
 import 'dart:math' as math;
 import '../models/muscle_catalog.dart';
+import '../services/muscle_recovery_service.dart';
 
 const double recoveryStimulus = 0.0;
 
@@ -11,17 +12,13 @@ class MuscleFatigueState {
   double fatigue;
   DateTime lastUpdate;
 
-  MuscleFatigueState({
-    required this.fatigue,
-    required this.lastUpdate,
-  });
+  MuscleFatigueState({required this.fatigue, required this.lastUpdate});
 }
 
 /// ======================================================
 /// 💪 FATIGUE SERVICE
 /// ======================================================
 class FatigueService {
-
   /// --------------------------------------------------
   /// 🕒 Aplica recuperación continua hasta "now"
   /// --------------------------------------------------
@@ -33,33 +30,34 @@ class FatigueService {
   }) {
     if (fatigue <= 0) return 0;
 
-    final hoursElapsed =
-        now.difference(lastUpdate).inMinutes / 60.0;
+    final hoursElapsed = now.difference(lastUpdate).inMinutes / 60.0;
 
     if (hoursElapsed <= 0) return fatigue;
 
     // Calcular factor por hora basado en la recuperación diaria del músculo
-    final recoveryFactorPerHour = math.pow(muscle.recoveryFactor, 1 / 24).toDouble();
+    final recoveryFactor = MuscleRecoveryService().getRecoveryFactor(muscle);
+    final recoveryFactorPerHour = math.pow(recoveryFactor, 1 / 24).toDouble();
 
-    return fatigue *
-        math.pow(recoveryFactorPerHour, hoursElapsed);
+    return (fatigue * math.pow(recoveryFactorPerHour, hoursElapsed)).clamp(
+      0.0,
+      100.0,
+    );
   }
 
   /// --------------------------------------------------
   /// 🏋️ Actualiza fatiga tras una sesión
   /// ✔ permite múltiples sesiones al día
-  /// ✔ sin techo artificial
+  /// ✔ sin techo artificial -> AHORA LIMITADO A 100%
   /// --------------------------------------------------
   static MuscleFatigueState updateAfterSession({
     required MuscleFatigueState state,
     required DateTime sessionTime,
     required double sessionLoad,
   }) {
-    final netLoad =
-        math.max(0, sessionLoad - recoveryStimulus);
+    final netLoad = math.max(0.0, sessionLoad - recoveryStimulus);
 
     return MuscleFatigueState(
-      fatigue: state.fatigue + netLoad,
+      fatigue: (state.fatigue + netLoad).clamp(0.0, 100.0),
       lastUpdate: sessionTime,
     );
   }

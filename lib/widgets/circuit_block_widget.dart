@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'exercise_note.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../theme/app_theme.dart';
 
 class CircuitBlockWidget extends StatelessWidget {
   final int index;
@@ -13,11 +15,18 @@ class CircuitBlockWidget extends StatelessWidget {
   final Map<int, Map<int, Map<String, int>>> circuitoRpePorRonda;
   final Map<int, Map<int, Map<String, ValueNotifier<bool>>>> circuitoDone;
   final Map<int, Map<String, bool>> circuitoPerSide;
-final void Function(int blockIndex, String exercise, bool value)
-    onPerSideChanged;
 
   final String Function(dynamic) normalizeExerciseName;
   final VoidCallback onStateChanged;
+
+  /// Cambia la variante ejecutada de un ejercicio del circuito (ej. "el
+  /// equipo planificado está ocupado"). Solo se ofrece en la ronda 1, antes
+  /// de avanzar de ronda: como el mismo ejercicio se repite por ronda,
+  /// cambiarlo más tarde dejaría rondas ya completadas con el nombre viejo
+  /// mezcladas con las nuevas bajo el nombre nuevo, lo que confunde al
+  /// atleta aunque el estado en sí migre correctamente.
+  final void Function(int blockIndex, Map<String, dynamic> exercise)?
+  onChangeVariant;
 
   const CircuitBlockWidget({
     super.key,
@@ -32,7 +41,7 @@ final void Function(int blockIndex, String exercise, bool value)
     required this.normalizeExerciseName,
     required this.onStateChanged,
     required this.circuitoPerSide,
-required this.onPerSideChanged,
+    this.onChangeVariant,
   });
 
   @override
@@ -51,7 +60,7 @@ required this.onPerSideChanged,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (int round = 1; round <= currentRound; round++) ...[
-          _roundCard(context, round, totalRounds),
+          _roundCard(context, round, totalRounds, currentRound),
           const SizedBox(height: 16),
         ],
 
@@ -71,7 +80,12 @@ required this.onPerSideChanged,
     );
   }
 
-  Widget _roundCard(BuildContext context, int round, int totalRounds) {
+  Widget _roundCard(
+    BuildContext context,
+    int round,
+    int totalRounds,
+    int currentRound,
+  ) {
     circuitoWeight[index]!.putIfAbsent(round, () => {});
     circuitoReps[index]!.putIfAbsent(round, () => {});
     circuitoRpePorRonda[index]!.putIfAbsent(round, () => {});
@@ -91,7 +105,12 @@ required this.onPerSideChanged,
             const SizedBox(height: 8),
 
             for (final ex in block['exercises'])
-              _exerciseRow(context, round, ex),
+              _exerciseRow(
+                context,
+                round,
+                ex,
+                canChangeVariant: round == 1 && currentRound == 1,
+              ),
           ],
         ),
       ),
@@ -101,71 +120,57 @@ required this.onPerSideChanged,
   Widget _exerciseRow(
     BuildContext context,
     int round,
-    Map<String, dynamic> ex,
-  ) {
+    Map<String, dynamic> ex, {
+    required bool canChangeVariant,
+  }) {
     final String name = normalizeExerciseName(ex['name']);
 
     circuitoReps[index]![round]!.putIfAbsent(
       name,
-      () => TextEditingController(
-        text: (ex['reps'] ?? 1).toString(),
-      ),
+      () => TextEditingController(text: (ex['reps'] ?? 1).toString()),
     );
 
     circuitoWeight[index]![round]!.putIfAbsent(
       name,
-      () => TextEditingController(
-        text: (ex['weight'] ?? 0).toString(),
-      ),
+      () => TextEditingController(text: (ex['weight'] ?? 0).toString()),
     );
 
     circuitoRpePorRonda[index]![round]!.putIfAbsent(name, () => 5);
 
-    circuitoDone[index]![round]!.putIfAbsent(
-      name,
-      () => ValueNotifier(false),
-    );
+    circuitoDone[index]![round]!.putIfAbsent(name, () => ValueNotifier(false));
 
     circuitoPerSide.putIfAbsent(index, () => {});
-circuitoPerSide[index]!.putIfAbsent(
-  name,
-  () => ex['perSide'] == true,
-);
+    circuitoPerSide[index]!.putIfAbsent(name, () => ex['perSide'] == true);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-  children: [
-    Expanded(
-      child: Text(
-        name,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-    ),
-
-    SizedBox(
-      width: 22,
-      height: 22,
-      child: Checkbox(
-        value: circuitoPerSide[index]?[name] == true,
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize:
-            MaterialTapTargetSize.shrinkWrap,
-        onChanged: (v) {
-          onPerSideChanged(index, name, v == true);
-        },
-      ),
-    ),
-
-    const SizedBox(width: 4),
-
-    const Text(
-      "L",
-      style: TextStyle(fontSize: 12),
-    ),
-  ],
-),
+          children: [
+            Expanded(
+              child: Text(
+                name,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            if (circuitoPerSide[index]?[name] == true)
+              const Text(
+                " (L)",
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.info,
+                ),
+              ),
+            if (canChangeVariant && onChangeVariant != null)
+              IconButton(
+                icon: const Icon(Icons.swap_horiz, size: 20),
+                tooltip: "Cambiar variante (equipo ocupado)",
+                onPressed: () => onChangeVariant!(index, ex),
+              ),
+          ],
+        ),
+        if (round == 1) ExerciseNote(ex['notes'], padding: EdgeInsets.zero),
         const SizedBox(height: 6),
 
         Row(
@@ -183,7 +188,9 @@ circuitoPerSide[index]!.putIfAbsent(
               child: TextField(
                 controller: circuitoWeight[index]![round]![name],
                 decoration: const InputDecoration(labelText: "Peso"),
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -192,10 +199,8 @@ circuitoPerSide[index]!.putIfAbsent(
               value: circuitoRpePorRonda[index]![round]![name],
               items: List.generate(
                 10,
-                (i) => DropdownMenuItem(
-                  value: i + 1,
-                  child: Text("RPE ${i + 1}"),
-                ),
+                (i) =>
+                    DropdownMenuItem(value: i + 1, child: Text("RPE ${i + 1}")),
               ),
               onChanged: (v) {
                 circuitoRpePorRonda[index]![round]![name] = v!;
@@ -207,25 +212,25 @@ circuitoPerSide[index]!.putIfAbsent(
               valueListenable: circuitoDone[index]![round]![name]!,
               builder: (_, checked, __) {
                 return Checkbox(
-                  value: checked,
-                  fillColor: MaterialStateProperty.resolveWith((states) {
-                    if (states.contains(MaterialState.selected)) {
-                      return Theme.of(context).colorScheme.primary;
-                    }
-                    return Colors.transparent;
-                  }),
-                  checkColor: Colors.black,
-                  side: const BorderSide(color: Colors.grey),
-                  onChanged: (v) {
-                    if (v == true) HapticFeedback.lightImpact();
-                    circuitoDone[index]![round]![name]!.value = v!;
-                  },
-                )
-                .animate(target: checked ? 1 : 0)
-                .shimmer(duration: 400.ms, color: Colors.greenAccent)
-                .scaleXY(end: 1.2, duration: 150.ms)
-                .then()
-                .scaleXY(end: 1.0, duration: 150.ms);
+                      value: checked,
+                      fillColor: MaterialStateProperty.resolveWith((states) {
+                        if (states.contains(MaterialState.selected)) {
+                          return Theme.of(context).colorScheme.primary;
+                        }
+                        return Colors.transparent;
+                      }),
+                      checkColor: Colors.black,
+                      side: const BorderSide(color: Colors.grey),
+                      onChanged: (v) {
+                        if (v == true) HapticFeedback.lightImpact();
+                        circuitoDone[index]![round]![name]!.value = v!;
+                      },
+                    )
+                    .animate(target: checked ? 1 : 0)
+                    .shimmer(duration: 400.ms, color: Colors.greenAccent)
+                    .scaleXY(end: 1.2, duration: 150.ms)
+                    .then()
+                    .scaleXY(end: 1.0, duration: 150.ms);
               },
             ),
           ],

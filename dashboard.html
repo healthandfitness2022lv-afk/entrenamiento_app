@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEXUS — Panel de Entrenamiento</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:#0d0d0d; --surface:#141414; --surface2:#1c1c1c; --border:#272727;
+      --text:#f0f0f0; --muted:#666; --accent:#39FF14; --accent-dim:rgba(57,255,20,.12);
+      --red:#ff4444; --yellow:#f59e0b; --blue:#3b82f6; --purple:#8b5cf6;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:-apple-system,'Segoe UI',sans-serif;min-height:100vh}
+
+    /* LOGIN */
+    #login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+    .login-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:44px 36px;width:100%;max-width:380px}
+    .logo{font-size:30px;font-weight:900;color:var(--accent);letter-spacing:6px;text-align:center;margin-bottom:4px}
+    .logo-sub{text-align:center;color:var(--muted);font-size:12px;letter-spacing:1px;margin-bottom:36px}
+    .field{margin-bottom:16px}
+    .field label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px}
+    .field input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:13px 14px;color:var(--text);font-size:14px;outline:none;transition:border-color .2s}
+    .field input:focus{border-color:var(--accent)}
+    .btn-login{width:100%;margin-top:8px;background:var(--accent);color:#000;border:none;border-radius:10px;padding:14px;font-size:13px;font-weight:800;letter-spacing:2px;cursor:pointer;transition:opacity .2s}
+    .btn-login:hover{opacity:.85}
+    .btn-login:disabled{opacity:.4;cursor:not-allowed}
+    .login-err{color:var(--red);font-size:12px;text-align:center;margin-top:12px;min-height:16px}
+
+    /* TOPBAR */
+    #dashboard{display:none}
+    .topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+    .topbar-logo{font-size:18px;font-weight:900;color:var(--accent);letter-spacing:4px}
+    .topbar-right{display:flex;align-items:center;gap:14px}
+    .topbar-email{font-size:12px;color:var(--muted)}
+    .btn-out{background:transparent;border:1px solid var(--border);color:var(--muted);padding:5px 13px;border-radius:7px;font-size:12px;cursor:pointer;transition:all .2s}
+    .btn-out:hover{border-color:var(--red);color:var(--red)}
+
+    .main{max-width:1200px;margin:0 auto;padding:24px}
+
+    /* LOADING */
+    .loading-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px;gap:14px;color:var(--muted)}
+    .spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .75s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* HEADER */
+    .dash-header{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:22px}
+    .dash-title{font-size:22px;font-weight:800}
+    .dash-sub{font-size:12px;color:var(--muted);margin-top:3px}
+    .range-btns{display:flex;gap:8px;flex-wrap:wrap}
+    .rbtn{background:var(--surface);border:1px solid var(--border);color:var(--muted);padding:7px 16px;border-radius:20px;font-size:12px;cursor:pointer;transition:all .2s}
+    .rbtn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+
+    /* KPIs */
+    .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+    @media(max-width:760px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}
+    .kpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;position:relative;overflow:hidden}
+    .kpi::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--kc,var(--accent))}
+    .kpi-icon{position:absolute;right:14px;top:14px;font-size:20px;opacity:.2}
+    .kpi-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+    .kpi-val{font-size:30px;font-weight:800;line-height:1}
+    .kpi-unit{font-size:13px;color:var(--muted);margin-left:3px}
+    .kpi-sub{font-size:11px;color:var(--muted);margin-top:5px}
+
+    /* CARDS */
+    .charts-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+    .charts-1{display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:20px}
+    @media(max-width:760px){.charts-2{grid-template-columns:1fr}}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px}
+    .card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+    .card-title{font-size:13px;font-weight:600}
+    .badge{font-size:11px;color:var(--accent);background:var(--accent-dim);padding:3px 9px;border-radius:20px}
+    .badge-red{color:var(--red);background:rgba(255,68,68,.1)}
+
+    /* FATIGUE BARS */
+    .fatigue-list{display:flex;flex-direction:column;gap:7px;max-height:280px;overflow-y:auto;padding-right:4px}
+    .frow{display:flex;align-items:center;gap:10px}
+    .fname{font-size:11px;color:var(--muted);width:110px;flex-shrink:0}
+    .ftrack{flex:1;height:7px;background:var(--surface2);border-radius:4px;overflow:hidden}
+    .ffill{height:100%;border-radius:4px;transition:width .5s}
+    .fpct{font-size:11px;width:34px;text-align:right;flex-shrink:0}
+
+    /* TABLE */
+    .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:32px}
+    .table-wrap table{width:100%;border-collapse:collapse}
+    .table-wrap thead th{padding:11px 18px;text-align:left;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;background:var(--surface2);border-bottom:1px solid var(--border)}
+    .table-wrap tbody tr{border-bottom:1px solid var(--border);transition:background .15s}
+    .table-wrap tbody tr:last-child{border-bottom:none}
+    .table-wrap tbody tr:hover{background:var(--surface2)}
+    .table-wrap tbody td{padding:11px 18px;font-size:13px}
+    .pill{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600}
+    .pg{background:rgba(57,255,20,.1);color:var(--accent)}
+    .pb{background:rgba(59,130,246,.1);color:var(--blue)}
+    .py{background:rgba(245,158,11,.1);color:var(--yellow)}
+    .pp{background:rgba(139,92,246,.1);color:var(--purple)}
+
+    .empty{text-align:center;color:var(--muted);padding:40px;font-size:13px}
+    .scroll-x{overflow-x:auto}
+    .section-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
+  </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="logo">NEXUS</div>
+    <div class="logo-sub">Panel de Entrenamiento</div>
+    <div class="field">
+      <label>Correo electrónico</label>
+      <input type="email" id="inp-email" placeholder="tu@correo.com" autocomplete="email" />
+    </div>
+    <div class="field">
+      <label>Contraseña</label>
+      <input type="password" id="inp-pass" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+    <button class="btn-login" id="btn-login">ENTRAR</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <div class="topbar">
+    <div class="topbar-logo">NEXUS</div>
+    <div class="topbar-right">
+      <span class="topbar-email" id="topbar-email"></span>
+      <button class="btn-out" id="btn-logout">Salir</button>
+    </div>
+  </div>
+
+  <div id="loading-wrap" class="loading-wrap">
+    <div class="spinner"></div>
+    <span>Cargando tus datos…</span>
+  </div>
+
+  <div id="main-content" class="main" style="display:none">
+
+    <div class="dash-header">
+      <div>
+        <div class="dash-title">Panel de Entrenamiento</div>
+        <div class="dash-sub" id="dash-sub">—</div>
+      </div>
+      <div class="range-btns">
+        <button class="rbtn" data-days="7">7 días</button>
+        <button class="rbtn active" data-days="30">30 días</button>
+        <button class="rbtn" data-days="90">90 días</button>
+        <button class="rbtn" data-days="0">Todo</button>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi" style="--kc:var(--accent)">
+        <span class="kpi-icon">🏋️</span>
+        <div class="kpi-label">Sesiones</div>
+        <div><span class="kpi-val" id="kv-s">—</span></div>
+        <div class="kpi-sub" id="ks-s"></div>
+      </div>
+      <div class="kpi" style="--kc:var(--yellow)">
+        <span class="kpi-icon">⚡</span>
+        <div class="kpi-label">Volumen total</div>
+        <div><span class="kpi-val" id="kv-v">—</span><span class="kpi-unit">kg</span></div>
+        <div class="kpi-sub" id="ks-v"></div>
+      </div>
+      <div class="kpi" style="--kc:var(--blue)">
+        <span class="kpi-icon">⏱️</span>
+        <div class="kpi-label">Duración promedio</div>
+        <div><span class="kpi-val" id="kv-d">—</span><span class="kpi-unit">min</span></div>
+        <div class="kpi-sub" id="ks-d"></div>
+      </div>
+      <div class="kpi" style="--kc:var(--purple)">
+        <span class="kpi-icon">🔥</span>
+        <div class="kpi-label">RPE promedio</div>
+        <div><span class="kpi-val" id="kv-r">—</span><span class="kpi-unit">/ 10</span></div>
+        <div class="kpi-sub" id="ks-r"></div>
+      </div>
+    </div>
+
+    <div class="charts-2">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">📈 Volumen por sesión (kg)</span>
+          <span class="badge" id="bdg-vol">—</span>
+        </div>
+        <canvas id="c-vol" height="190"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">📅 Sesiones por día de semana</span>
+        </div>
+        <canvas id="c-week" height="190"></canvas>
+      </div>
+    </div>
+
+    <div class="charts-2">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">💪 Carga muscular acumulada</span>
+          <span class="badge">Top 10</span>
+        </div>
+        <canvas id="c-muscle" height="230"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">🔋 Fatiga muscular actual</span>
+          <span class="badge badge-red">En vivo</span>
+        </div>
+        <div class="fatigue-list" id="fatigue-list"><div class="empty">Cargando…</div></div>
+      </div>
+    </div>
+
+    <div class="charts-1">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">⚡ RPE promedio por sesión</span>
+          <span class="badge" id="bdg-rpe">—</span>
+        </div>
+        <canvas id="c-rpe" height="120"></canvas>
+      </div>
+    </div>
+
+    <div class="section-label">Últimas sesiones</div>
+    <div class="table-wrap">
+      <div class="scroll-x">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th><th>Sesión</th><th>Tipo</th>
+              <th>Duración</th><th>Volumen</th><th>Series</th><th>RPE prom.</th>
+            </tr>
+          </thead>
+          <tbody id="tbl-body"><tr><td colspan="7" class="empty">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// FIREBASE CONFIG
+// ═══════════════════════════════════════════════
+const API_KEY   = 'AIzaSyDWWU5buvlFT25VjKbY2VUlA5VNlUGAoqM';
+const PROJECT   = 'entrenamientoapplv';
+const FS_BASE   = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
+const AUTH_BASE = `https://identitytoolkit.googleapis.com/v1/accounts`;
+
+let idToken = null;
+let currentUid = null;
+let currentEmail = null;
+
+// ═══════════════════════════════════════════════
+// FIRESTORE VALUE PARSER
+// ═══════════════════════════════════════════════
+function parseVal(v) {
+  if (!v) return null;
+  if ('stringValue'    in v) return v.stringValue;
+  if ('integerValue'   in v) return parseInt(v.integerValue);
+  if ('doubleValue'    in v) return parseFloat(v.doubleValue);
+  if ('booleanValue'   in v) return v.booleanValue;
+  if ('nullValue'      in v) return null;
+  if ('timestampValue' in v) return new Date(v.timestampValue);
+  if ('arrayValue'     in v) return (v.arrayValue.values || []).map(parseVal);
+  if ('mapValue'       in v) {
+    const obj = {};
+    for (const [k,vv] of Object.entries(v.mapValue.fields || {})) obj[k] = parseVal(vv);
+    return obj;
+  }
+  return null;
+}
+
+function parseDoc(doc) {
+  const obj = { _id: doc.name.split('/').pop() };
+  for (const [k,v] of Object.entries(doc.fields || {})) obj[k] = parseVal(v);
+  return obj;
+}
+
+// ═══════════════════════════════════════════════
+// FIREBASE AUTH (REST)
+// ═══════════════════════════════════════════════
+async function signIn(email, password) {
+  const res = await fetch(`${AUTH_BASE}:signInWithPassword?key=${API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, returnSecureToken: true }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || 'Error de autenticación');
+  return { idToken: data.idToken, uid: data.localId, email: data.email };
+}
+
+// ═══════════════════════════════════════════════
+// FIRESTORE REST
+// ═══════════════════════════════════════════════
+async function queryWorkouts(uid) {
+  const url = `${FS_BASE}:runQuery`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: 'workouts_logged' }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: 'userId' },
+            op: 'EQUAL',
+            value: { stringValue: uid },
+          },
+        },
+        limit: 300,
+      },
+    }),
+  });
+  const rows = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(rows));
+  return rows.filter(r => r.document).map(r => parseDoc(r.document));
+}
+
+async function queryMuscleState(uid) {
+  const url = `${FS_BASE}/users/${uid}/muscle_state`;
+  const res = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${idToken}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data));
+  return (data.documents || []).map(parseDoc);
+}
+
+// ═══════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════
+const DAYS_ES = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+const MUSCLE_ES = {
+  quads:'Cuádriceps', hamstrings:'Isquiotibiales', glutes:'Glúteos',
+  midGlutes:'Glúteo medio', adductors:'Aductores', calves:'Gemelos',
+  chest:'Pecho', upperChest:'Pecho superior', frontDelts:'Deltoides ant.',
+  midDelts:'Deltoides med.', triceps:'Tríceps', lats:'Dorsales',
+  rombs:'Romboides', midBack:'Espalda media', trapsUpper:'Trapecio sup.',
+  lowerTraps:'Trapecio inf.', rearDelts:'Deltoides post.', biceps:'Bíceps',
+  forearms:'Antebrazos', abs:'Abdominales', lowerAbs:'Ab. inferiores',
+  obliques:'Oblicuos', psoas:'Psoas', serratus:'Serrato', lowerBack:'Lumbar',
+};
+const BLOCK_PILL = {
+  'Series':'pg','Series descendentes':'pg','Buscar RM':'pp',
+  'Circuito':'pb','Tabata':'py','EMOM':'py',
+};
+const CG = '#1e1e1e';
+const CT = { color:'#555', font:{ size:11 } };
+
+// ═══════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════
+function toDate(v) {
+  if (!v) return new Date(0);
+  if (v instanceof Date) return v;
+  if (v.toDate) return v.toDate();
+  return new Date(v);
+}
+function fmtDate(v) {
+  return toDate(v).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'});
+}
+function fmtShort(v) {
+  return toDate(v).toLocaleDateString('es-ES',{day:'2-digit',month:'short'});
+}
+function fmtN(n) { return Math.round(n).toLocaleString('es-ES'); }
+function fatigueColor(p) {
+  if (p >= 80) return '#ef4444';
+  if (p >= 60) return '#f97316';
+  if (p >= 40) return '#f59e0b';
+  if (p >= 20) return '#84cc16';
+  return '#39FF14';
+}
+
+function computeMetrics(performed) {
+  let sets=0, vol=0, rpeSum=0, rpeN=0;
+  for (const blk of (performed||[])) {
+    const t = blk.type||'';
+    if (['Series','Series descendentes','Buscar RM'].includes(t)) {
+      for (const ex of (blk.exercises||[])) {
+        const ps = ex.perSide ? 2 : 1;
+        for (const s of (ex.sets||[])) {
+          sets++;
+          if (s.rpe!=null){ rpeSum+=+s.rpe; rpeN++; }
+          const w=(+s.weight||0)*ps, r=+s.reps||0;
+          if(w>0&&r>0) vol+=w*r;
+        }
+      }
+    } else if (t==='Circuito') {
+      for (const rnd of (blk.rounds||[])) {
+        for (const ex of (rnd.exercises||[])) {
+          sets++;
+          if (ex.rpe!=null){ rpeSum+=+ex.rpe; rpeN++; }
+          const w=(+ex.weight||0)*(ex.perSide?2:1), r=+ex.reps||0;
+          if(w>0&&r>0) vol+=w*r;
+        }
+      }
+    } else if (t==='Tabata'||t==='EMOM') {
+      for (const ex of (blk.exercises||[])) {
+        sets++;
+        if (ex.rpe!=null){ rpeSum+=+ex.rpe; rpeN++; }
+      }
+    }
+  }
+  return { sets, vol:Math.round(vol), avgRpe: rpeN>0 ? rpeSum/rpeN : 0 };
+}
+
+// ═══════════════════════════════════════════════
+// CHARTS STATE
+// ═══════════════════════════════════════════════
+let allSessions=[], chartVol, chartWeek, chartMuscle, chartRpe;
+
+function defOpts(extra) {
+  return Object.assign({
+    responsive:true, animation:{duration:400},
+    plugins:{
+      legend:{display:false},
+      tooltip:{backgroundColor:'#1c1c1c',titleColor:'#888',bodyColor:'#f0f0f0',borderColor:'#272727',borderWidth:1,padding:10},
+    },
+    scales:{
+      x:{grid:{color:CG},ticks:CT},
+      y:{grid:{color:CG},ticks:CT},
+    },
+  }, extra||{});
+}
+
+// ═══════════════════════════════════════════════
+// FILTER & RENDER
+// ═══════════════════════════════════════════════
+function filterBy(days) {
+  if(!days) return [...allSessions];
+  const cut=new Date(); cut.setDate(cut.getDate()-days);
+  return allSessions.filter(s=>toDate(s.date)>=cut);
+}
+
+function renderAll(days) {
+  const s=filterBy(days);
+  renderKPIs(s,days);
+  renderVolChart(s);
+  renderWeekChart(s);
+  renderMuscleChart(s);
+  renderRpeChart(s);
+  renderTable(s);
+  renderSubtitle(s);
+}
+
+function renderSubtitle(ss) {
+  const el=document.getElementById('dash-sub');
+  if(!ss.length){el.textContent='Sin datos en este período';return;}
+  const dates=ss.map(s=>toDate(s.date).getTime());
+  const mn=new Date(Math.min(...dates)), mx=new Date(Math.max(...dates));
+  el.textContent=`${mn.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})} — ${mx.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})}`;
+}
+
+function renderKPIs(ss,days) {
+  let vol=0,dur=0,rpeSum=0,rpeN=0,sets=0;
+  for(const s of ss){
+    const m=computeMetrics(s.performed);
+    vol+=m.vol; dur+=s.durationMinutes||0;
+    rpeSum+=m.avgRpe*(m.sets||1); rpeN+=m.sets||1; sets+=m.sets;
+  }
+  const n=ss.length, avgDur=n?Math.round(dur/n):0, avgVol=n?Math.round(vol/n):0;
+  const avgRpe=rpeN?(rpeSum/rpeN).toFixed(1):'—';
+
+  document.getElementById('kv-s').textContent=fmtN(n);
+  document.getElementById('ks-s').textContent=days?`últimos ${days} días`:'total histórico';
+  document.getElementById('kv-v').textContent=fmtN(vol);
+  document.getElementById('ks-v').textContent=`~${fmtN(avgVol)} kg / sesión`;
+  document.getElementById('kv-d').textContent=avgDur||'—';
+  document.getElementById('ks-d').textContent=`Total: ${fmtN(dur)} min`;
+  document.getElementById('kv-r').textContent=avgRpe;
+  document.getElementById('ks-r').textContent=`Basado en ${fmtN(sets)} series`;
+}
+
+function renderVolChart(ss) {
+  const srt=[...ss].sort((a,b)=>toDate(a.date)-toDate(b.date));
+  const labels=srt.map(s=>fmtShort(s.date));
+  const data=srt.map(s=>computeMetrics(s.performed).vol);
+  document.getElementById('bdg-vol').textContent=`${ss.length} sesiones`;
+  const ctx=document.getElementById('c-vol').getContext('2d');
+  if(chartVol)chartVol.destroy();
+  chartVol=new Chart(ctx,{type:'line',data:{labels,datasets:[{data,borderColor:'#39FF14',backgroundColor:'rgba(57,255,20,.06)',borderWidth:2,fill:true,tension:.35,pointRadius:data.length<=20?4:0,pointBackgroundColor:'#39FF14'}]},options:defOpts({plugins:{legend:{display:false},tooltip:{backgroundColor:'#1c1c1c',titleColor:'#888',bodyColor:'#f0f0f0',borderColor:'#272727',borderWidth:1,padding:10,callbacks:{label:c=>` ${fmtN(c.raw)} kg`}}}})});
+}
+
+function renderWeekChart(ss) {
+  const counts=[0,0,0,0,0,0,0];
+  for(const s of ss) counts[toDate(s.date).getDay()]++;
+  const maxV=Math.max(...counts);
+  const ctx=document.getElementById('c-week').getContext('2d');
+  if(chartWeek)chartWeek.destroy();
+  chartWeek=new Chart(ctx,{type:'bar',data:{labels:DAYS_ES,datasets:[{data:counts,backgroundColor:counts.map(v=>v===maxV&&v>0?'rgba(57,255,20,.8)':'rgba(57,255,20,.22)'),borderRadius:6,borderSkipped:false}]},options:defOpts()});
+}
+
+function renderMuscleChart(ss) {
+  const totals={};
+  for(const s of ss) for(const[k,v] of Object.entries(s.muscleLoad||{})) totals[k]=(totals[k]||0)+(+v||0);
+  const top=Object.entries(totals).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const labels=top.map(([m])=>MUSCLE_ES[m]||m);
+  const data=top.map(([,v])=>Math.round(v*10)/10);
+  const ctx=document.getElementById('c-muscle').getContext('2d');
+  if(chartMuscle)chartMuscle.destroy();
+  chartMuscle=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data,backgroundColor:'rgba(139,92,246,.65)',borderRadius:4,borderSkipped:false}]},options:defOpts({indexAxis:'y'})});
+}
+
+function renderRpeChart(ss) {
+  const srt=[...ss].sort((a,b)=>toDate(a.date)-toDate(b.date));
+  const labels=srt.map(s=>fmtShort(s.date));
+  const data=srt.map(s=>{const m=computeMetrics(s.performed);return m.avgRpe>0?+m.avgRpe.toFixed(1):null;});
+  document.getElementById('bdg-rpe').textContent=`${ss.length} sesiones`;
+  const ctx=document.getElementById('c-rpe').getContext('2d');
+  if(chartRpe)chartRpe.destroy();
+  chartRpe=new Chart(ctx,{type:'line',data:{labels,datasets:[{data,borderColor:'#8b5cf6',backgroundColor:'rgba(139,92,246,.05)',borderWidth:2,fill:true,tension:.35,spanGaps:true,pointRadius:data.length<=20?4:0,pointBackgroundColor:'#8b5cf6'}]},options:defOpts({scales:{x:{grid:{color:CG},ticks:CT},y:{grid:{color:CG},ticks:CT,min:0,max:10}}})});
+}
+
+function renderFatigue(docs) {
+  const el=document.getElementById('fatigue-list');
+  if(!docs.length){el.innerHTML='<div class="empty">Sin datos de fatiga disponibles</div>';return;}
+  const srt=[...docs].sort((a,b)=>(+b.fatigue||0)-(+a.fatigue||0));
+  el.innerHTML=srt.map(d=>{
+    const pct=Math.min(100,Math.round(+d.fatigue||0));
+    const col=fatigueColor(pct);
+    const name=MUSCLE_ES[d._id]||d._id;
+    return `<div class="frow"><div class="fname">${name}</div><div class="ftrack"><div class="ffill" style="width:${pct}%;background:${col}"></div></div><div class="fpct" style="color:${col}">${pct}%</div></div>`;
+  }).join('');
+}
+
+function renderTable(ss) {
+  const tbody=document.getElementById('tbl-body');
+  const rows=[...ss].sort((a,b)=>toDate(b.date)-toDate(a.date)).slice(0,20);
+  if(!rows.length){tbody.innerHTML='<tr><td colspan="7" class="empty">Sin sesiones en este período</td></tr>';return;}
+  tbody.innerHTML=rows.map(s=>{
+    const m=computeMetrics(s.performed);
+    const types=[...new Set((s.performed||[]).map(b=>b.type).filter(Boolean))];
+    const pill=types.length?`<span class="pill ${BLOCK_PILL[types[0]]||'pg'}">${types[0]}</span>`:'';
+    const volStr=m.vol>0?`${fmtN(m.vol)} kg`:'—';
+    const rpeStr=m.avgRpe>0?m.avgRpe.toFixed(1):'—';
+    const rpeCol=m.avgRpe>=8?'var(--red)':m.avgRpe>=6?'var(--yellow)':'var(--accent)';
+    return `<tr>
+      <td style="color:var(--muted)">${fmtDate(s.date)}</td>
+      <td><strong>${s.sessionName||'Entrenamiento'}</strong></td>
+      <td>${pill}</td>
+      <td>${s.durationMinutes?s.durationMinutes+' min':'—'}</td>
+      <td>${volStr}</td>
+      <td>${fmtN(m.sets)}</td>
+      <td style="color:${rpeCol};font-weight:700">${rpeStr}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════
+// AUTH FLOW
+// ═══════════════════════════════════════════════
+document.getElementById('btn-login').addEventListener('click', async () => {
+  const email=document.getElementById('inp-email').value.trim();
+  const pass=document.getElementById('inp-pass').value;
+  const btn=document.getElementById('btn-login');
+  const err=document.getElementById('login-err');
+  err.textContent='';
+  btn.disabled=true; btn.textContent='Entrando…';
+  try {
+    const r=await signIn(email,pass);
+    idToken=r.idToken; currentUid=r.uid; currentEmail=r.email;
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('dashboard').style.display='block';
+    document.getElementById('loading-wrap').style.display='flex';
+    document.getElementById('main-content').style.display='none';
+    document.getElementById('topbar-email').textContent=currentEmail;
+    await loadData();
+  } catch(e) {
+    const msg = e.message==='EMAIL_NOT_FOUND'||e.message==='INVALID_PASSWORD'||e.message==='INVALID_LOGIN_CREDENTIALS'
+      ? 'Correo o contraseña incorrectos.' : `Error: ${e.message}`;
+    err.textContent=msg;
+    btn.disabled=false; btn.textContent='ENTRAR';
+  }
+});
+
+document.getElementById('inp-pass').addEventListener('keydown', e=>{
+  if(e.key==='Enter') document.getElementById('btn-login').click();
+});
+
+document.getElementById('btn-logout').addEventListener('click', ()=>{
+  idToken=null; currentUid=null;
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('btn-login').disabled=false;
+  document.getElementById('btn-login').textContent='ENTRAR';
+});
+
+// ═══════════════════════════════════════════════
+// LOAD DATA
+// ═══════════════════════════════════════════════
+async function loadData() {
+  try {
+    const [workouts, muscleState] = await Promise.all([
+      queryWorkouts(currentUid),
+      queryMuscleState(currentUid),
+    ]);
+    allSessions=workouts;
+    renderFatigue(muscleState);
+
+    document.querySelectorAll('.rbtn').forEach(btn=>{
+      btn.addEventListener('click', function(){
+        document.querySelectorAll('.rbtn').forEach(b=>b.classList.remove('active'));
+        this.classList.add('active');
+        renderAll(parseInt(this.dataset.days));
+      });
+    });
+
+    renderAll(30);
+    document.getElementById('loading-wrap').style.display='none';
+    document.getElementById('main-content').style.display='block';
+  } catch(e) {
+    console.error(e);
+    document.getElementById('loading-wrap').innerHTML=`
+      <div style="color:var(--red);text-align:center">
+        <div style="font-size:28px;margin-bottom:10px">⚠️</div>
+        <div>Error al cargar los datos</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">${e.message}</div>
+      </div>`;
+  }
+}
+</script>
+</body>
+</html>

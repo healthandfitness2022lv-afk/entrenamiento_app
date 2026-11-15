@@ -12,11 +12,12 @@ class MyRoutinesScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text("Mis Rutinas")),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('routine_assignments')
-            .where('athleteId', isEqualTo: uid)
-            .where('status', isEqualTo: 'active')
-            .snapshots(),
+        stream:
+            FirebaseFirestore.instance
+                .collection('routine_assignments')
+                .where('athleteId', isEqualTo: uid)
+                .where('status', isEqualTo: 'active')
+                .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -27,39 +28,41 @@ class MyRoutinesScreen extends StatelessWidget {
           }
 
           return ListView(
-            children: snapshot.data!.docs.map((assignment) {
-              final routineId = assignment['routineId'];
+            children:
+                snapshot.data!.docs.map((assignment) {
+                  final routineId = assignment['routineId'];
 
-              return FutureBuilder<DocumentSnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection('routines')
-                    .doc(routineId)
-                    .get(),
-                builder: (context, routineSnapshot) {
-                  if (!routineSnapshot.hasData) {
-                    return const ListTile(
-                        title: Text("Cargando rutina..."));
-                  }
+                  return FutureBuilder<DocumentSnapshot>(
+                    future:
+                        FirebaseFirestore.instance
+                            .collection('routines')
+                            .doc(routineId)
+                            .get(),
+                    builder: (context, routineSnapshot) {
+                      if (!routineSnapshot.hasData) {
+                        return const ListTile(
+                          title: Text("Cargando rutina..."),
+                        );
+                      }
 
-                 final routineDoc = routineSnapshot.data!;
+                      final routineDoc = routineSnapshot.data!;
 
-if (!routineDoc.exists) {
-  return const SizedBox(); // o un mensaje si quieres
-}
+                      if (!routineDoc.exists) {
+                        return const SizedBox(); // o un mensaje si quieres
+                      }
 
-final routine = routineDoc.data() as Map<String, dynamic>;
+                      final routine = routineDoc.data() as Map<String, dynamic>;
 
-return Card(
-  child: ListTile(
-    title: Text(routine['name'] ?? 'Rutina sin nombre'),
-    subtitle: Text(routine['description'] ?? ''),
-    trailing: const Icon(Icons.fitness_center),
-  ),
-);
-
-                },
-              );
-            }).toList(),
+                      return Card(
+                        child: ListTile(
+                          title: Text(routine['name'] ?? 'Rutina sin nombre'),
+                          subtitle: Text(routine['description'] ?? ''),
+                          trailing: const Icon(Icons.fitness_center),
+                        ),
+                      );
+                    },
+                  );
+                }).toList(),
           );
         },
       ),

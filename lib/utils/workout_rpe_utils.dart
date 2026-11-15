@@ -1,28 +1,23 @@
-double calculateAverageWorkoutRPE(
-  List<Map<String, dynamic>> performed,
-) {
+double calculateAverageWorkoutRPE(List<Map<String, dynamic>> performed) {
   double sum = 0;
   int count = 0;
 
   for (final block in performed) {
-
     // =======================
     // 🔵 SERIES
     // =======================
-    if (block['type'] == 'Series' || block['type'] == 'Series descendentes' || block['type'] == 'Buscar RM') {
-
-      final exercises =
-          List<Map<String, dynamic>>.from(block['exercises'] ?? []);
+    if (block['type'] == 'Series' ||
+        block['type'] == 'Series descendentes' ||
+        block['type'] == 'Buscar RM') {
+      final exercises = List<Map<String, dynamic>>.from(
+        block['exercises'] ?? [],
+      );
 
       for (final ex in exercises) {
-
-        final sets =
-            List<Map<String, dynamic>>.from(ex['sets'] ?? []);
+        final sets = List<Map<String, dynamic>>.from(ex['sets'] ?? []);
 
         for (final s in sets) {
-
-          final double? rpe =
-              (s['rpe'] as num?)?.toDouble();
+          final double? rpe = (s['rpe'] as num?)?.toDouble();
 
           if (rpe != null && rpe > 0) {
             sum += rpe;
@@ -36,19 +31,15 @@ double calculateAverageWorkoutRPE(
     // 🔴 CIRCUITO
     // =======================
     if (block['type'] == 'Circuito') {
-
-      final rounds =
-          List<Map<String, dynamic>>.from(block['rounds'] ?? []);
+      final rounds = List<Map<String, dynamic>>.from(block['rounds'] ?? []);
 
       for (final round in rounds) {
-
-        final exercises =
-            List<Map<String, dynamic>>.from(round['exercises'] ?? []);
+        final exercises = List<Map<String, dynamic>>.from(
+          round['exercises'] ?? [],
+        );
 
         for (final ex in exercises) {
-
-          final double? rpe =
-              (ex['rpe'] as num?)?.toDouble();
+          final double? rpe = (ex['rpe'] as num?)?.toDouble();
 
           if (rpe != null && rpe > 0) {
             sum += rpe;
@@ -62,14 +53,12 @@ double calculateAverageWorkoutRPE(
     // 🟣 TABATA
     // =======================
     if (block['type'] == 'Tabata') {
-
-      final exercises =
-          List<Map<String, dynamic>>.from(block['exercises'] ?? []);
+      final exercises = List<Map<String, dynamic>>.from(
+        block['exercises'] ?? [],
+      );
 
       for (final ex in exercises) {
-
-        final double? rpe =
-            (ex['rpe'] as num?)?.toDouble();
+        final double? rpe = (ex['rpe'] as num?)?.toDouble();
 
         if (rpe != null && rpe > 0) {
           sum += rpe;

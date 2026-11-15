@@ -1,6 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.entrenamiento_app">
 
+    <!-- Guardar la historia exportada en la galería (solo Android 9 o menor
+         necesita permiso; desde Android 10 se guarda sin pedirlo). -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <application
         android:label="IRONGRIND"
         android:name="${applicationName}"

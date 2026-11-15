@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../screens/add_workout_screen.dart';
+import '../theme/app_theme.dart';
 
 class LogWorkoutDialogs {
   static Future<void> showExerciseInfo({
@@ -10,12 +11,13 @@ class LogWorkoutDialogs {
   }) async {
     showDialog(
       context: context,
-      builder: (_) => const AlertDialog(
-        content: SizedBox(
-          height: 80,
-          child: Center(child: CircularProgressIndicator()),
-        ),
-      ),
+      builder:
+          (_) => const AlertDialog(
+            content: SizedBox(
+              height: 80,
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          ),
     );
 
     final instructions = await fetchInstructions(name);
@@ -24,18 +26,20 @@ class LogWorkoutDialogs {
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(name),
-        content: instructions != null
-            ? Text(instructions)
-            : const Text("No hay instrucciones disponibles"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cerrar"),
+      builder:
+          (_) => AlertDialog(
+            title: Text(name),
+            content:
+                instructions != null
+                    ? Text(instructions)
+                    : const Text("No hay instrucciones disponibles"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cerrar"),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -45,20 +49,21 @@ class LogWorkoutDialogs {
   }) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Eliminar ejercicio"),
-        content: Text("¿Eliminar $exerciseName del bloque?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("Cancelar"),
+      builder:
+          (_) => AlertDialog(
+            title: const Text("Eliminar ejercicio"),
+            content: Text("¿Eliminar $exerciseName del bloque?"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("Cancelar"),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text("Eliminar"),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Eliminar"),
-          ),
-        ],
-      ),
     );
     return ok == true;
   }
@@ -66,43 +71,79 @@ class LogWorkoutDialogs {
   static Future<bool> confirmDeleteBlock(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Eliminar bloque"),
-        content: const Text("¿Seguro que deseas eliminar este bloque?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("Cancelar"),
+      builder:
+          (_) => AlertDialog(
+            title: const Text("Eliminar bloque"),
+            content: const Text("¿Seguro que deseas eliminar este bloque?"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("Cancelar"),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text("Eliminar"),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Eliminar"),
-          ),
-        ],
-      ),
     );
     return ok == true;
   }
 
-  static Future<bool> confirmFinish(BuildContext context) async {
+  /// [pendingSets]: series sin marcar como hechas (no se guardarán).
+  /// Confirma el fin del entrenamiento y permite dejar una nota opcional.
+  /// Devuelve `null` si se cancela; si no, la nota (vacía si no se escribió).
+  static Future<String?> confirmFinish(
+    BuildContext context, {
+    int pendingSets = 0,
+    String initialNotes = '',
+  }) async {
+    final notesCtrl = TextEditingController(text: initialNotes);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Finalizar entrenamiento"),
-        content: const Text("¿Estás seguro?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("Cancelar"),
+      builder:
+          (_) => AlertDialog(
+            title: const Text("Finalizar entrenamiento"),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    pendingSets == 0
+                        ? "¿Estás seguro?"
+                        : "Tienes $pendingSets ${pendingSets == 1 ? 'serie' : 'series'} sin marcar como hecha${pendingSets == 1 ? '' : 's'}. "
+                            "No se guardará${pendingSets == 1 ? '' : 'n'}. ¿Finalizar de todos modos?",
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: notesCtrl,
+                    minLines: 2,
+                    maxLines: 5,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: const InputDecoration(
+                      labelText: "Nota (opcional)",
+                      hintText: "¿Cómo te sentiste? Molestias, sensaciones…",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("Cancelar"),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text("Finalizar"),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Finalizar"),
-          ),
-        ],
-      ),
     );
-    return ok == true;
+    // Sin dispose: el TextField sigue montado durante la animación de cierre.
+    return ok == true ? notesCtrl.text.trim() : null;
   }
 
   static Future<int?> askTabataRpe({
@@ -152,6 +193,7 @@ class LogWorkoutDialogs {
   static void showAddBlockOptions({
     required BuildContext context,
     required Function(Map<String, dynamic>) onBlockAdded,
+    VoidCallback? onAddPlannedFromDate,
   }) {
     showModalBottomSheet(
       context: context,
@@ -159,72 +201,127 @@ class LogWorkoutDialogs {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => DefaultTabController(
-        length: 2,
-        child: SizedBox(
-          height: MediaQuery.of(context).size.height * 0.65,
-          child: Column(
-            children: [
-              // Handle
-              const SizedBox(height: 10),
-              Center(
-                child: Container(
-                  width: 40, height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade400,
-                    borderRadius: BorderRadius.circular(10),
+      builder:
+          (_) => DefaultTabController(
+            length: 2,
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.65,
+              child: Column(
+                children: [
+                  // Handle
+                  const SizedBox(height: 10),
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Agregar bloque",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  const SizedBox(height: 8),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Agregar bloque",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const TabBar(
-                tabs: [
-                  Tab(icon: Icon(Icons.add_circle_outline), text: "Nuevo"),
-                  Tab(icon: Icon(Icons.library_books_outlined), text: "Guardados"),
-                ],
-              ),
-              Expanded(
-                child: TabBarView(
-                  children: [
-                    // ---- TAB 1: Crear nuevo bloque ----
-                    ListView(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                  const SizedBox(height: 8),
+                  const TabBar(
+                    tabs: [
+                      Tab(icon: Icon(Icons.add_circle_outline), text: "Nuevo"),
+                      Tab(
+                        icon: Icon(Icons.library_books_outlined),
+                        text: "Guardados",
+                      ),
+                    ],
+                  ),
+                  Expanded(
+                    child: TabBarView(
                       children: [
-                        _addBlockTile(context, "Series", Icons.repeat, onBlockAdded),
-                        _addBlockTile(context, "Circuito", Icons.loop, onBlockAdded),
-                        _addBlockTile(context, "Tabata", Icons.timer, onBlockAdded),
-                        _addBlockTile(context, "EMOM", Icons.av_timer, onBlockAdded),
-                        _addBlockTile(context, "Series descendentes", Icons.trending_down, onBlockAdded),
-                        _addBlockTile(context, "Buscar RM", Icons.track_changes, onBlockAdded),
+                        // ---- TAB 1: Crear nuevo bloque ----
+                        ListView(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          children: [
+                            if (onAddPlannedFromDate != null)
+                              ListTile(
+                                leading: const Icon(
+                                  Icons.calendar_month_outlined,
+                                ),
+                                title: const Text(
+                                  "Bloques planificados de otro día",
+                                ),
+                                subtitle: const Text(
+                                  "Importa los bloques asignados a una fecha",
+                                ),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  onAddPlannedFromDate();
+                                },
+                              ),
+                            if (onAddPlannedFromDate != null) const Divider(),
+                            _addBlockTile(
+                              context,
+                              "Series",
+                              Icons.repeat,
+                              onBlockAdded,
+                            ),
+                            _addBlockTile(
+                              context,
+                              "Circuito",
+                              Icons.loop,
+                              onBlockAdded,
+                            ),
+                            _addBlockTile(
+                              context,
+                              "Tabata",
+                              Icons.timer,
+                              onBlockAdded,
+                            ),
+                            _addBlockTile(
+                              context,
+                              "EMOM",
+                              Icons.av_timer,
+                              onBlockAdded,
+                            ),
+                            _addBlockTile(
+                              context,
+                              "Series descendentes",
+                              Icons.trending_down,
+                              onBlockAdded,
+                            ),
+                            _addBlockTile(
+                              context,
+                              "Buscar RM",
+                              Icons.track_changes,
+                              onBlockAdded,
+                            ),
+                          ],
+                        ),
+
+                        // ---- TAB 2: Bloques guardados ----
+                        _SavedBlocksList(onBlockAdded: onBlockAdded),
                       ],
                     ),
-
-                    // ---- TAB 2: Bloques guardados ----
-                    _SavedBlocksList(onBlockAdded: onBlockAdded),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
     );
   }
 
   static Widget _addBlockTile(
-    BuildContext context, 
-    String type, 
+    BuildContext context,
+    String type,
     IconData icon,
     Function(Map<String, dynamic>) onBlockAdded,
   ) {
@@ -237,9 +334,8 @@ class LogWorkoutDialogs {
           context,
           MaterialPageRoute(
             fullscreenDialog: true,
-            builder: (_) => AddWorkoutScreen(
-              initialBlock: _emptyBlockForType(type),
-            ),
+            builder:
+                (_) => AddWorkoutScreen(initialBlock: _emptyBlockForType(type)),
           ),
         );
         if (block != null) {
@@ -252,10 +348,7 @@ class LogWorkoutDialogs {
   static Map<String, dynamic> _emptyBlockForType(String type) {
     switch (type) {
       case "Series":
-        return {
-          "type": "Series",
-          "exercises": <Map<String, dynamic>>[],
-        };
+        return {"type": "Series", "exercises": <Map<String, dynamic>>[]};
       case "Circuito":
         return {
           "type": "Circuito",
@@ -283,10 +376,7 @@ class LogWorkoutDialogs {
           "exercises": <Map<String, dynamic>>[],
         };
       default:
-        return {
-          "type": type,
-          "exercises": <Map<String, dynamic>>[],
-        };
+        return {"type": type, "exercises": <Map<String, dynamic>>[]};
     }
   }
 
@@ -346,12 +436,18 @@ class LogWorkoutDialogs {
                           leading: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: Colors.tealAccent.withOpacity(0.2),
+                              color: AppColors.accent.withOpacity(0.2),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.fitness_center, color: Colors.tealAccent),
+                            child: const Icon(
+                              Icons.fitness_center,
+                              color: AppColors.accent,
+                            ),
                           ),
-                          title: const Text("Entrenamiento libre", style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            "Entrenamiento libre",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           subtitle: const Text("Añade bloques manualmente"),
                           onTap: () async {
                             final ok = await onConfirmChange();
@@ -365,7 +461,10 @@ class LogWorkoutDialogs {
                         const Divider(),
                         if (availableRoutines.isNotEmpty)
                           const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                             child: Text(
                               "Mis bloques",
                               style: TextStyle(
@@ -376,17 +475,22 @@ class LogWorkoutDialogs {
                             ),
                           ),
                         ...availableRoutines.map((r) {
-                          final isCurrent = currentRoutine != null && currentRoutine['id'] == r['id'];
+                          final isCurrent =
+                              currentRoutine != null &&
+                              currentRoutine['id'] == r['id'];
                           return ListTile(
                             leading: Icon(
                               Icons.list_alt_rounded,
-                              color: isCurrent ? Colors.tealAccent : Colors.grey,
+                              color: isCurrent ? AppColors.accent : Colors.grey,
                             ),
                             title: Text(
                               r['name'] ?? 'Rutina',
                               style: TextStyle(
-                                fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                                color: isCurrent ? Colors.tealAccent : null,
+                                fontWeight:
+                                    isCurrent
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                color: isCurrent ? AppColors.accent : null,
                               ),
                             ),
                             onTap: () async {
@@ -437,10 +541,11 @@ class _SavedBlocksListState extends State<_SavedBlocksList> {
   }
 
   Future<void> _load() async {
-    final snap = await FirebaseFirestore.instance
-        .collection('blocks')
-        .orderBy('createdAt', descending: true)
-        .get();
+    final snap =
+        await FirebaseFirestore.instance
+            .collection('blocks')
+            .orderBy('createdAt', descending: true)
+            .get();
 
     if (mounted) {
       setState(() {
@@ -481,21 +586,26 @@ class _SavedBlocksListState extends State<_SavedBlocksList> {
 
         return ListTile(
           leading: CircleAvatar(
-            backgroundColor: Colors.tealAccent.withOpacity(0.15),
-            child: const Icon(Icons.fitness_center, color: Colors.tealAccent, size: 20),
+            backgroundColor: AppColors.accent.withOpacity(0.15),
+            child: const Icon(
+              Icons.fitness_center,
+              color: AppColors.accent,
+              size: 20,
+            ),
           ),
           title: Text(title.isNotEmpty ? title : type),
           subtitle: Text("$type  •  $exCount ejercicios"),
-          trailing: const Icon(Icons.add_circle, color: Colors.tealAccent),
+          trailing: const Icon(Icons.add_circle, color: AppColors.accent),
           onTap: () {
             Navigator.pop(ctx); // cerrar sheet
             // Pasar una copia del bloque (sin el id de Firestore)
-            final blockCopy = Map<String, dynamic>.from(b)
-              ..remove('id')
-              ..remove('createdAt')
-              ..remove('updatedAt')
-              ..remove('sourceRoutineId')
-              ..remove('sourceRoutineName');
+            final blockCopy =
+                Map<String, dynamic>.from(b)
+                  ..remove('id')
+                  ..remove('createdAt')
+                  ..remove('updatedAt')
+                  ..remove('sourceRoutineId')
+                  ..remove('sourceRoutineName');
             widget.onBlockAdded(blockCopy);
           },
         );

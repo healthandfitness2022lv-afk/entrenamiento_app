@@ -18,9 +18,7 @@ class _AssignRoutineScreenState extends State<AssignRoutineScreen> {
 
     final adminUid = FirebaseAuth.instance.currentUser!.uid;
 
-    await FirebaseFirestore.instance
-        .collection('routine_assignments')
-        .add({
+    await FirebaseFirestore.instance.collection('routine_assignments').add({
       'routineId': selectedRoutineId,
       'athleteId': selectedAthleteId,
       'assignedBy': adminUid,
@@ -43,23 +41,24 @@ class _AssignRoutineScreenState extends State<AssignRoutineScreen> {
           children: [
             /// 🔹 Rutinas
             StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('routines')
-                  .snapshots(),
+              stream:
+                  FirebaseFirestore.instance.collection('routines').snapshots(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const CircularProgressIndicator();
                 }
 
                 return DropdownButtonFormField<String>(
-                  decoration:
-                      const InputDecoration(labelText: "Seleccionar rutina"),
-                  items: snapshot.data!.docs.map((doc) {
-                    return DropdownMenuItem(
-                      value: doc.id,
-                      child: Text(doc['name']),
-                    );
-                  }).toList(),
+                  decoration: const InputDecoration(
+                    labelText: "Seleccionar rutina",
+                  ),
+                  items:
+                      snapshot.data!.docs.map((doc) {
+                        return DropdownMenuItem(
+                          value: doc.id,
+                          child: Text(doc['name']),
+                        );
+                      }).toList(),
                   onChanged: (value) {
                     setState(() => selectedRoutineId = value);
                   },
@@ -71,38 +70,37 @@ class _AssignRoutineScreenState extends State<AssignRoutineScreen> {
 
             /// 🔹 Atletas
             StreamBuilder<QuerySnapshot>(
-  stream: FirebaseFirestore.instance
-      .collection('users')
-      .where(
-        'role',
-        whereIn: ['atleta', 'administrador'],
-      )
-      .snapshots(),
-  builder: (context, snapshot) {
-    if (!snapshot.hasData) {
-      return const CircularProgressIndicator();
-    }
+              stream:
+                  FirebaseFirestore.instance
+                      .collection('users')
+                      .where('role', whereIn: ['atleta', 'administrador'])
+                      .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const CircularProgressIndicator();
+                }
 
-    return DropdownButtonFormField<String>(
-      decoration:
-          const InputDecoration(labelText: "Seleccionar atleta"),
-      items: snapshot.data!.docs.map((doc) {
-        return DropdownMenuItem(
-          value: doc.id,
-          child: Text(
-            doc.id == FirebaseAuth.instance.currentUser!.uid
-                ? "${doc['name']} (Yo)"
-                : doc['name'],
-          ),
-        );
-      }).toList(),
-      onChanged: (value) {
-        setState(() => selectedAthleteId = value);
-      },
-    );
-  },
-),
-
+                return DropdownButtonFormField<String>(
+                  decoration: const InputDecoration(
+                    labelText: "Seleccionar atleta",
+                  ),
+                  items:
+                      snapshot.data!.docs.map((doc) {
+                        return DropdownMenuItem(
+                          value: doc.id,
+                          child: Text(
+                            doc.id == FirebaseAuth.instance.currentUser!.uid
+                                ? "${doc['name']} (Yo)"
+                                : doc['name'],
+                          ),
+                        );
+                      }).toList(),
+                  onChanged: (value) {
+                    setState(() => selectedAthleteId = value);
+                  },
+                );
+              },
+            ),
 
             const SizedBox(height: 30),
 

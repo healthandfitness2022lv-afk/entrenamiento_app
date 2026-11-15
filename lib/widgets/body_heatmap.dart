@@ -11,16 +11,14 @@ class BodyHeatmap extends StatefulWidget {
   final bool percentageScale; // 👈 NUEVO
   final double opacityMultiplier;
 
-
   const BodyHeatmap({
-  super.key,
-  required this.heatmap,
-  this.showBack = false,
-  this.overrideColor,
-  this.percentageScale = false,
-  this.opacityMultiplier = 1.0, // 👈 NUEVO
-});
-
+    super.key,
+    required this.heatmap,
+    this.showBack = false,
+    this.overrideColor,
+    this.percentageScale = false,
+    this.opacityMultiplier = 1.0, // 👈 NUEVO
+  });
 
   @override
   State<BodyHeatmap> createState() => _BodyHeatmapState();
@@ -39,22 +37,20 @@ class _BodyHeatmapState extends State<BodyHeatmap> {
   }
 
   @override
-void didUpdateWidget(covariant BodyHeatmap oldWidget) {
-  super.didUpdateWidget(oldWidget);
-  _loadSvg(); // 🔥 siempre recalcula si el widget cambia
-}
-
+  void didUpdateWidget(covariant BodyHeatmap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadSvg(); // 🔥 siempre recalcula si el widget cambia
+  }
 
   /// ======================================================
   /// 🔑 Cache key estable (NO depende del orden del Map)
   /// ======================================================
   String _cacheKey() {
-    final entries = widget.heatmap.entries
-        .map(
-          (e) => '${e.key.name}:${e.value.toStringAsFixed(3)}',
-        )
-        .toList()
-      ..sort();
+    final entries =
+        widget.heatmap.entries
+            .map((e) => '${e.key.name}:${e.value.toStringAsFixed(3)}')
+            .toList()
+          ..sort();
 
     return [
       widget.showBack ? 'back' : 'front',
@@ -75,19 +71,19 @@ void didUpdateWidget(covariant BodyHeatmap oldWidget) {
       return;
     }
 
-    final path = widget.showBack
-        ? 'assets/svg/body_back.svg'
-        : 'assets/svg/body_front.svg';
+    final path =
+        widget.showBack
+            ? 'assets/svg/body_back.svg'
+            : 'assets/svg/body_front.svg';
 
     final rawSvg = await rootBundle.loadString(path);
 
     final coloredSvg = buildColoredSvg(
-  rawSvg,
-  widget.heatmap,
-  overrideColor: widget.overrideColor,
-  opacityMultiplier: widget.opacityMultiplier, // 👈 NUEVO
-);
-
+      rawSvg,
+      widget.heatmap,
+      overrideColor: widget.overrideColor,
+      opacityMultiplier: widget.opacityMultiplier, // 👈 NUEVO
+    );
 
     _svgCache[key] = coloredSvg;
 
@@ -96,29 +92,28 @@ void didUpdateWidget(covariant BodyHeatmap oldWidget) {
   }
 
   @override
-Widget build(BuildContext context) {
-  if (_svgData == null) {
-    return const Center(
-      child: SizedBox(
-        width: 24,
-        height: 24,
-        child: CircularProgressIndicator(strokeWidth: 2),
+  Widget build(BuildContext context) {
+    if (_svgData == null) {
+      return const Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    return RepaintBoundary(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SvgPicture.string(
+            _svgData!,
+            width: constraints.maxWidth,
+            height: constraints.maxHeight,
+            fit: BoxFit.contain,
+          );
+        },
       ),
     );
   }
-
-  return RepaintBoundary(
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        return SvgPicture.string(
-          _svgData!,
-          width: constraints.maxWidth,
-          height: constraints.maxHeight,
-          fit: BoxFit.contain,
-        );
-      },
-    ),
-  );
-}
-
 }
