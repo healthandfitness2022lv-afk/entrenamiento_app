@@ -23,10 +23,10 @@
 
 
 ## Resumen
-- **Costo de desarrollo estimado (horas × tarifa): $20.450.000 CLP**
-- Horas acumuladas: 818 h
-- Última actualización: 2026-11-15 (valoración inicial + T-001)
-- Referencia de mercado: apps de entrenamiento para atleta/entrenador se venden por suscripción, p. ej. TrainingPeaks (https://www.trainingpeaks.com/pricing) y TrueCoach. Precios no verificados en esta ejecución; revisar las páginas. El valor aquí es costo de reemplazo, no precio de venta.
+- **Costo de desarrollo estimado (horas × tarifa): $20.600.000 CLP**
+- Horas acumuladas: 824 h
+- Última actualización: 2026-11-22 (T-003 análisis comercial)
+- Referencia de mercado: apps de entrenamiento para atleta/entrenador se venden por suscripción, p. ej. TrainingPeaks (https://www.trainingpeaks.com/pricing) y TrueCoach. Precios verificados el 2026-11-22 en la sección "Valor de mercado" y en docs/SALES.md. El valor aquí es costo de reemplazo, no precio de venta.
 
 ## Módulos
 | Módulo / mejora | Descripción breve | Horas | Valor (CLP) | Fecha | PR |
@@ -42,7 +42,8 @@
 | Reportes de atleta/periodo, PDF y export de stories | Reportes extensos, PDF, imágenes compartibles | 40 | 1.000.000 | 2026-11-15 | inicial |
 | Scripts de datos y tests | ~56 scripts Node, 5 suites de test | 20 | 500.000 | 2026-11-15 | inicial |
 | T-001 Documentación de arquitectura | ARCHITECTURE.md, comandos, valoración inicial | 8 | 200.000 | 2026-11-15 | #6 |
+| T-003 Análisis comercial | SALES.md (segmento, competencia con precios, planes), visión comercial, 3 tareas de ventas | 6 | 150.000 | 2026-11-22 | T-003 (ver TASKS.md) |
 
 ## Notas
 - Horas de módulos iniciales son estimaciones por tamaño de código (~57.800 líneas Dart) y complejidad; no son mediciones.
-- Valor de venta sugerido como producto (instalación + mensualidad): por definir tras T-003.
+- Valor de venta sugerido como producto (instalación + mensualidad): planes $6.990 / $14.990 / $29.990 / desde $59.900 + instalación $150.000 (CLP + IVA/mes), en PROPUESTA (ADR-002, docs/SALES.md).
