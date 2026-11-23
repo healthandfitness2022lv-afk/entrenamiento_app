@@ -7,7 +7,7 @@ Prioridad: P0 (urgente) · P1 · P2. Solo el humano mueve tareas a `HECHA` (al h
 |----|-----------|--------|--------|------|--------------------|----|-------------|
 | T-001 | P1 | HECHO | Completar ARCHITECTURE.md inspeccionando el código real | claude/T-001-architecture-valoracion | Solo docs; sin tests (flutter no disponible en sesión); QA automático en PR | https://github.com/healthandfitness2022lv-afk/entrenamiento_app/pull/6 | $20.450.000 (incl. inicial) |
 | T-002 | P2 | BLOQUEADA (entorno) | Diagnóstico de calidad: análisis estático y tests, registrar fallos como tareas | claude/T-002-diagnostico-calidad | 2026-11-22: el proxy de la sesión en la nube bloquea storage.googleapis.com (CONNECT 403); no se instala el SDK Dart/Flutter. Ejecutar en máquina con Flutter o habilitar el host | — | por estimar |
-| T-003 | P2 | EN_CURSO | Análisis comercial (sales): cliente objetivo, propuesta de valor, precios y 3 mejoras prioritarias | claude/T-003-analisis-comercial | Inicio: subagente sales | — | por estimar |
+| T-003 | P2 | EN_REVISION | Análisis comercial (sales): cliente objetivo, propuesta de valor, precios y 3 mejoras prioritarias | claude/T-003-analisis-comercial | SALES.md, ROADMAP, T-004..T-006, ADR-002 PROPUESTA; QA aprobado | https://github.com/healthandfitness2022lv-afk/entrenamiento_app/pull/9 | $150.000 |
 | T-004 | P1 | PENDIENTE | Informe semanal con marca del entrenador, compartible por WhatsApp | — | — | — | por estimar |
 | T-005 | P1 | PENDIENTE | Panel "Mis alumnos" con semáforo de fatiga y adherencia | — | — | — | por estimar |
 | T-006 | P2 | PENDIENTE | Modo demo y plantillas de planificación para onboarding rápido | — | — | — | por estimar |
