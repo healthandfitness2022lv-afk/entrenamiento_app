@@ -6,8 +6,8 @@ Prioridad: P0 (urgente) · P1 · P2. Solo el humano mueve tareas a `HECHA` (al h
 | ID | Prioridad | Estado | Título | Rama | Checkpoint / Notas | PR | Valor (CLP) |
 |----|-----------|--------|--------|------|--------------------|----|-------------|
 | T-001 | P1 | HECHO | Completar ARCHITECTURE.md inspeccionando el código real | claude/T-001-architecture-valoracion | Solo docs; sin tests (flutter no disponible en sesión); QA automático en PR | https://github.com/healthandfitness2022lv-afk/entrenamiento_app/pull/6 | $20.450.000 (incl. inicial) |
-| T-002 | P2 | EN_CURSO | Diagnóstico de calidad: análisis estático y tests, registrar fallos como tareas | claude/T-002-diagnostico-calidad | Inicio: instalar SDK y correr analyze/test | — | por estimar |
-| T-003 | P2 | PENDIENTE | Análisis comercial (sales): cliente objetivo, propuesta de valor, precios y 3 mejoras prioritarias | — | — | — | por estimar |
+| T-002 | P2 | BLOQUEADA (entorno: el proxy de la sesión en la nube bloquea storage.googleapis.com, no se puede instalar el SDK Dart/Flutter; ejecutar en una máquina con Flutter o habilitar el host) | Diagnóstico de calidad: análisis estático y tests, registrar fallos como tareas | claude/T-002-diagnostico-calidad | 2026-11-22: `flutter --version` falla al descargar Dart SDK (curl 56, CONNECT 403) | — | por estimar |
+| T-003 | P2 | EN_CURSO | Análisis comercial (sales): cliente objetivo, propuesta de valor, precios y 3 mejoras prioritarias | claude/T-003-analisis-comercial | Inicio: subagente sales | — | por estimar |
 ## Detalle de tareas
 
 ### T-001 — Completar ARCHITECTURE.md
