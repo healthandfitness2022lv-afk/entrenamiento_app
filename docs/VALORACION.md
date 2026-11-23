@@ -7,12 +7,19 @@
 > Estimación comercial: cuánto pagaría un cliente por resolver su problema, según precios de alternativas en el mercado chileno (nov 2026). Las horas de abajo son solo el costo interno de desarrollo.
 
 - **Qué resuelve:** Gestión de alumnos, rutinas y planes para gimnasios y personal trainers.
-- **Competencia y precios de referencia:** GymMaster desde USD 25/mes, Fitco desde USD 79/mes, TeamUp/Mindbody ~USD 99/mes; en Chile BoxMagic y AgendaPro.
-- **Precio a un cliente:** Gimnasio chico $30.000–$60.000/mes; personal trainer $10.000–$20.000/mes; instalación $150.000–$300.000
-- **Venta exclusiva a un cliente:** $1.500.000 – $3.000.000 (app con la marca de un gimnasio)
-- **Valor hoy como producto (sin clientes):** $4.000.000 – $8.000.000
-- **Nota:** Mercado con competidores fuertes; el diferencial es precio local y app con la marca del propio gimnasio.
-- Fuentes: apps.shopify.com/bsale · guiadesoftware.com/blog/mejor-software-gestion-inventario-pymes-latam · capterra.es (GymMaster, Fitco, Boxmagic) · zenoti.com/es/thecheckin/best-fitness-gym-software-2026 · ecosistemastartup.com (easycancha) · 2x3.cl/p/precios-desarrollo-aplicacion-movil
+- **Segmento:** personal trainers/coaches de fuerza (10-40 alumnos). Detalle en `docs/SALES.md`.
+- **Competencia y precios (consulta 2026-11-22):**
+  - TrueCoach: USD 26,34 / 57,99 / 136,99 al mes (5 / 20 / 50 clientes) — https://www.truecoach.co/pricing
+  - Hevy Coach: USD 25 (1-10), 50 (11-25), 90 (26-50), 160 (51-100) — https://www.capterra.com/p/10015732/Hevy-Coach/pricing/
+  - TrainingPeaks Premium (atleta): USD 19,95/mes o 134,99/año — https://trainingpeaks.com/pricing/for-athletes/ (precios de coach no verificados)
+  - Trainerize: Free, desde USD 9 y USD 23; página inconsistente, no confiable — https://trainerize.com/pricing
+  - AgendaPro Chile: $15.900 / 34.900 / 54.900 / 249.900 + IVA al mes — https://agendapro.com/cl/planes
+  - BoxMagic: desde 39.900 y 69.990 al mes (moneda no verificada, probable CLP) — https://www.capterra.com/p/275373/Boxmagic/
+  - GymMaster, Fitco, TeamUp, Mindbody: cifras previas no verificadas.
+- **Precio sugerido a un cliente (PROPUESTA, ADR-002), CLP + IVA/mes:** Atleta $6.990; Coach (15 alumnos) $14.990; Coach Pro (40) $29.990; Equipo/Box desde $59.900; instalación Equipo $150.000.
+- **Venta exclusiva a un cliente:** $1.500.000 – $3.000.000 (app con marca de un gimnasio). Estimación interna, no verificada con mercado.
+- **Valor hoy como producto (sin clientes):** $4.000.000 – $8.000.000. Estimación interna, no verificada.
+- **Nota:** el diferencial es fatiga por músculo, español y precio en CLP; faltan agenda, cobros y facturación para competir con BoxMagic/AgendaPro.
 
 
 ## Resumen
