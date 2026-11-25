@@ -1,0 +1,41 @@
+# Nexus AI — CI de Flutter (ADR-002).
+# Corre análisis estático y tests en cada PR a main y en cada push a ramas claude/**.
+# Es la fuente de verdad de "tests en verde": las sesiones en la nube no pueden instalar Flutter.
+# El check se llama "flutter-ci" y es requisito para que un agente fusione (ADR-003).
+name: flutter-ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: ['claude/**']
+  workflow_dispatch:
+
+concurrency:
+  group: flutter-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  flutter-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      # Errores bloquean; avisos e infos se informan pero no bloquean (T-002 los registra como tareas).
+      - name: flutter analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: flutter test
+        run: flutter test --reporter expanded

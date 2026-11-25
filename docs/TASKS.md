@@ -1,12 +1,12 @@
 # TASKS — Cola de trabajo
 
 Estados: `PENDIENTE` → `EN_CURSO` → `EN_REVISION` → `HECHA` · también `BLOQUEADA (motivo)`.
-Prioridad: P0 (urgente) · P1 · P2. Solo el humano mueve tareas a `HECHA` (al hacer merge).
+Prioridad: P0 (urgente) · P1 · P2. Pasan a `HECHA` al fusionar: el humano, o el agente cuando el PR cumple la auto-fusión (ADR-003).
 
 | ID | Prioridad | Estado | Título | Rama | Checkpoint / Notas | PR | Valor (CLP) |
 |----|-----------|--------|--------|------|--------------------|----|-------------|
 | T-001 | P1 | HECHO | Completar ARCHITECTURE.md inspeccionando el código real | claude/T-001-architecture-valoracion | Solo docs; sin tests (flutter no disponible en sesión); QA automático en PR | https://github.com/healthandfitness2022lv-afk/entrenamiento_app/pull/6 | $20.450.000 (incl. inicial) |
-| T-002 | P2 | PENDIENTE | Diagnóstico de calidad: análisis estático y tests, registrar fallos como tareas | — | — | — | por estimar |
+| T-002 | P2 | PENDIENTE | Diagnóstico de calidad: análisis estático y tests, registrar fallos como tareas | claude/T-002-diagnostico-calidad | 2026-11-24: desbloqueada por ADR-002 (CI `flutter-ci` en GitHub Actions). Continuar la rama existente: traer `main`, empujar y usar la salida real del check `flutter-ci` como informe | — | por estimar |
 | T-003 | P2 | PENDIENTE | Análisis comercial (sales): cliente objetivo, propuesta de valor, precios y 3 mejoras prioritarias | — | — | — | por estimar |
 ## Detalle de tareas
 
