@@ -6,7 +6,7 @@ Prioridad: P0 (urgente) · P1 · P2. Solo el humano mueve tareas a `HECHA` (al h
 | ID | Prioridad | Estado | Título | Rama | Checkpoint / Notas | PR | Valor (CLP) |
 |----|-----------|--------|--------|------|--------------------|----|-------------|
 | T-001 | P1 | HECHO | Completar ARCHITECTURE.md inspeccionando el código real | claude/T-001-architecture-valoracion | Solo docs; sin tests (flutter no disponible en sesión); QA automático en PR | https://github.com/healthandfitness2022lv-afk/entrenamiento_app/pull/6 | $20.450.000 (incl. inicial) |
-| T-002 | P2 | BLOQUEADA (aprobación) | Diagnóstico de calidad: análisis estático y tests, registrar fallos como tareas | claude/T-002-diagnostico-calidad | 2026-11-23: SDK de Flutter no descargable en la nube (proxy 403 al bajar Dart SDK). Ver ADR-002 (PROPUESTA): CI en Actions, abrir host o salida local del dueño | — | por estimar |
+| T-002 | P2 | EN_CURSO | Diagnóstico de calidad: análisis estático y tests, registrar fallos como tareas | claude/T-002-diagnostico-calidad | 2026-11-25: desbloqueada; se usa la salida real del check flutter-ci (run 45536767789, rama de PR #10, código idéntico a main) | — | por estimar |
 | T-003 | P2 | PENDIENTE | Análisis comercial (sales): cliente objetivo, propuesta de valor, precios y 3 mejoras prioritarias | — | — | — | por estimar |
 ## Detalle de tareas
 
