@@ -36,7 +36,7 @@
 | Reportes de atleta/periodo, PDF y export de stories | Reportes extensos, PDF, imágenes compartibles | 40 | 1.000.000 | 2026-11-15 | inicial |
 | Scripts de datos y tests | ~56 scripts Node, 5 suites de test | 20 | 500.000 | 2026-11-15 | inicial |
 | T-001 Documentación de arquitectura | ARCHITECTURE.md, comandos, valoración inicial | 8 | 200.000 | 2026-11-15 | #6 |
-| T-002 Diagnóstico de calidad | analyze + tests en CI, informe y 4 tareas de corrección | 6 | 150.000 | 2026-11-25 | PRNUM |
+| T-002 Diagnóstico de calidad | analyze + tests en CI, informe y 4 tareas de corrección | 6 | 150.000 | 2026-11-25 | #11 |
 
 ## Notas
 - Horas de módulos iniciales son estimaciones por tamaño de código (~57.800 líneas Dart) y complejidad; no son mediciones.
