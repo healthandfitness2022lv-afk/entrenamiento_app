@@ -7,19 +7,26 @@
 > Estimación comercial: cuánto pagaría un cliente por resolver su problema, según precios de alternativas en el mercado chileno (nov 2026). Las horas de abajo son solo el costo interno de desarrollo.
 
 - **Qué resuelve:** Gestión de alumnos, rutinas y planes para gimnasios y personal trainers.
-- **Competencia y precios de referencia:** GymMaster desde USD 25/mes, Fitco desde USD 79/mes, TeamUp/Mindbody ~USD 99/mes; en Chile BoxMagic y AgendaPro.
-- **Precio a un cliente:** Gimnasio chico $30.000–$60.000/mes; personal trainer $10.000–$20.000/mes; instalación $150.000–$300.000
-- **Venta exclusiva a un cliente:** $1.500.000 – $3.000.000 (app con la marca de un gimnasio)
-- **Valor hoy como producto (sin clientes):** $4.000.000 – $8.000.000
-- **Nota:** Mercado con competidores fuertes; el diferencial es precio local y app con la marca del propio gimnasio.
-- Fuentes: apps.shopify.com/bsale · guiadesoftware.com/blog/mejor-software-gestion-inventario-pymes-latam · capterra.es (GymMaster, Fitco, Boxmagic) · zenoti.com/es/thecheckin/best-fitness-gym-software-2026 · ecosistemastartup.com (easycancha) · 2x3.cl/p/precios-desarrollo-aplicacion-movil
+- **Segmento:** personal trainers/coaches de fuerza (10-40 alumnos). Detalle en `docs/SALES.md`.
+- **Competencia y precios (consulta 2026-11-22):**
+  - TrueCoach: USD 26,34 / 57,99 / 136,99 al mes (5 / 20 / 50 clientes) — https://www.truecoach.co/pricing
+  - Hevy Coach: USD 25 (1-10), 50 (11-25), 90 (26-50), 160 (51-100) — https://www.capterra.com/p/10015732/Hevy-Coach/pricing/
+  - TrainingPeaks Premium (atleta): USD 19,95/mes o 134,99/año — https://trainingpeaks.com/pricing/for-athletes/ (precios de coach no verificados)
+  - Trainerize: Free, desde USD 9 y USD 23; página inconsistente, no confiable — https://trainerize.com/pricing
+  - AgendaPro Chile: $15.900 / 34.900 / 54.900 / 249.900 + IVA al mes — https://agendapro.com/cl/planes
+  - BoxMagic: desde 39.900 y 69.990 al mes (moneda no verificada, probable CLP) — https://www.capterra.com/p/275373/Boxmagic/
+  - GymMaster, Fitco, TeamUp, Mindbody: cifras previas no verificadas.
+- **Precio sugerido a un cliente (PROPUESTA, ADR-002), CLP + IVA/mes:** Atleta $6.990; Coach (15 alumnos) $14.990; Coach Pro (40) $29.990; Equipo/Box desde $59.900; instalación Equipo $150.000.
+- **Venta exclusiva a un cliente:** $1.500.000 – $3.000.000 (app con marca de un gimnasio). Estimación interna, no verificada con mercado.
+- **Valor hoy como producto (sin clientes):** $4.000.000 – $8.000.000. Estimación interna, no verificada.
+- **Nota:** el diferencial es fatiga por músculo, español y precio en CLP; faltan agenda, cobros y facturación para competir con BoxMagic/AgendaPro.
 
 
 ## Resumen
-- **Costo de desarrollo estimado (horas × tarifa): $20.450.000 CLP**
-- Horas acumuladas: 818 h
-- Última actualización: 2026-11-15 (valoración inicial + T-001)
-- Referencia de mercado: apps de entrenamiento para atleta/entrenador se venden por suscripción, p. ej. TrainingPeaks (https://www.trainingpeaks.com/pricing) y TrueCoach. Precios no verificados en esta ejecución; revisar las páginas. El valor aquí es costo de reemplazo, no precio de venta.
+- **Costo de desarrollo estimado (horas × tarifa): $20.600.000 CLP**
+- Horas acumuladas: 824 h
+- Última actualización: 2026-11-22 (T-003 análisis comercial)
+- Referencia de mercado: apps de entrenamiento para atleta/entrenador se venden por suscripción, p. ej. TrainingPeaks (https://www.trainingpeaks.com/pricing) y TrueCoach. Precios verificados el 2026-11-22 en la sección "Valor de mercado" y en docs/SALES.md. El valor aquí es costo de reemplazo, no precio de venta.
 
 ## Módulos
 | Módulo / mejora | Descripción breve | Horas | Valor (CLP) | Fecha | PR |
@@ -35,7 +42,8 @@
 | Reportes de atleta/periodo, PDF y export de stories | Reportes extensos, PDF, imágenes compartibles | 40 | 1.000.000 | 2026-11-15 | inicial |
 | Scripts de datos y tests | ~56 scripts Node, 5 suites de test | 20 | 500.000 | 2026-11-15 | inicial |
 | T-001 Documentación de arquitectura | ARCHITECTURE.md, comandos, valoración inicial | 8 | 200.000 | 2026-11-15 | #6 |
+| T-003 Análisis comercial | SALES.md (segmento, competencia con precios, planes), visión comercial, 3 tareas de ventas | 6 | 150.000 | 2026-11-22 | T-003 (ver TASKS.md) |
 
 ## Notas
 - Horas de módulos iniciales son estimaciones por tamaño de código (~57.800 líneas Dart) y complejidad; no son mediciones.
-- Valor de venta sugerido como producto (instalación + mensualidad): por definir tras T-003.
+- Valor de venta sugerido como producto (instalación + mensualidad): planes $6.990 / $14.990 / $29.990 / desde $59.900 + instalación $150.000 (CLP + IVA/mes), en PROPUESTA (ADR-002, docs/SALES.md).
