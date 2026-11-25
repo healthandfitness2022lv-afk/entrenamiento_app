@@ -21,10 +21,13 @@ BASH_RULES = [
     (r"\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f)", "operación destructiva de git"),
     (r"\bgit\s+branch\s+-D\b", "borrado forzado de ramas"),
     (r"\bgit\s+push\b.*\s--delete\b|\bgit\s+push\b.*\s:\S+", "borrado de ramas remotas"),
-    (r"\bgh\s+pr\s+merge\b", "merge de PR prohibido"),
+    (r"\bgh\s+pr\s+merge\b", "usa `gh api -X PUT .../pulls/<n>/merge` (gh pr usa GraphQL, no disponible)"),
     (r"\bgh\s+pr\s+ready\b", "solo el humano saca el PR de borrador"),
     (r"\bgh\s+(repo\s+delete|release\s+(create|delete)|secret|variable)\b", "operación administrativa de GitHub"),
-    (r"\bgh\s+api\b.*(-X|--method)\s*(DELETE|PUT|PATCH)", "escritura directa a la API de GitHub"),
+    # Merge permitido SOLO vía `gh api -X PUT repos/<owner>/<repo>/pulls/<n>/merge` (ADR-003:
+    # QA aprobado + check flutter-ci en verde). Cualquier otro PUT/PATCH/DELETE sigue bloqueado.
+    (r"\bgh\s+api\b(?!.*/pulls/\d+/merge\b).*(-X|--method)\s*(DELETE|PUT|PATCH)", "escritura directa a la API de GitHub"),
+    (r"\bgh\s+api\b.*/pulls/\d+/merge\b.*(-X|--method)\s*DELETE", "escritura directa a la API de GitHub"),
     (r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\s+(/|~|\$HOME|\.\s*$|\*|\.\.)", "borrado recursivo peligroso"),
     (r"\b(firebase\s+deploy|vercel\b.*--prod|netlify\s+deploy\b.*--prod|fly\s+deploy|heroku\b|gcloud\s+(app|run|functions)\s+deploy|aws\s+\S+\s+(deploy|delete|terminate)|eas\s+(submit|update)|fastlane)", "despliegue a producción prohibido"),
     (r"\b(npm|pnpm|yarn)\s+run\s+[\w:.-]*(deploy|prod|migrate|seed|clear|reset|drop)\b|\bnetlify\s+deploy\b|\bprisma\s+(migrate\s+(deploy|reset)|db\s+(push|seed))|\bsupabase\s+db\s+(push|reset)", "despliegue o cambio de base de datos prohibido"),
