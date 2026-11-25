@@ -11,14 +11,15 @@
 - **Precio a un cliente:** Gimnasio chico $30.000–$60.000/mes; personal trainer $10.000–$20.000/mes; instalación $150.000–$300.000
 - **Venta exclusiva a un cliente:** $1.500.000 – $3.000.000 (app con la marca de un gimnasio)
 - **Valor hoy como producto (sin clientes):** $4.000.000 – $8.000.000
+- **Efecto de T-002 en el precio:** ninguno directo. Confirma 0 errores de análisis y 35 tests en verde, lo que sirve como respaldo técnico ante un cliente (due diligence), pero el precio sube recién cuando T-007/T-009 reduzcan riesgo de fallas en el registro de entrenamientos.
 - **Nota:** Mercado con competidores fuertes; el diferencial es precio local y app con la marca del propio gimnasio.
 - Fuentes: apps.shopify.com/bsale · guiadesoftware.com/blog/mejor-software-gestion-inventario-pymes-latam · capterra.es (GymMaster, Fitco, Boxmagic) · zenoti.com/es/thecheckin/best-fitness-gym-software-2026 · ecosistemastartup.com (easycancha) · 2x3.cl/p/precios-desarrollo-aplicacion-movil
 
 
 ## Resumen
-- **Costo de desarrollo estimado (horas × tarifa): $20.450.000 CLP**
-- Horas acumuladas: 818 h
-- Última actualización: 2026-11-15 (valoración inicial + T-001)
+- **Costo de desarrollo estimado (horas × tarifa): $20.600.000 CLP**
+- Horas acumuladas: 824 h
+- Última actualización: 2026-11-25 (T-002 diagnóstico de calidad)
 - Referencia de mercado: apps de entrenamiento para atleta/entrenador se venden por suscripción, p. ej. TrainingPeaks (https://www.trainingpeaks.com/pricing) y TrueCoach. Precios no verificados en esta ejecución; revisar las páginas. El valor aquí es costo de reemplazo, no precio de venta.
 
 ## Módulos
@@ -35,6 +36,7 @@
 | Reportes de atleta/periodo, PDF y export de stories | Reportes extensos, PDF, imágenes compartibles | 40 | 1.000.000 | 2026-11-15 | inicial |
 | Scripts de datos y tests | ~56 scripts Node, 5 suites de test | 20 | 500.000 | 2026-11-15 | inicial |
 | T-001 Documentación de arquitectura | ARCHITECTURE.md, comandos, valoración inicial | 8 | 200.000 | 2026-11-15 | #6 |
+| T-002 Diagnóstico de calidad | analyze + tests en CI, informe y 4 tareas de corrección | 6 | 150.000 | 2026-11-25 | PRNUM |
 
 ## Notas
 - Horas de módulos iniciales son estimaciones por tamaño de código (~57.800 líneas Dart) y complejidad; no son mediciones.
