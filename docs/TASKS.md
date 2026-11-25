@@ -9,7 +9,7 @@ Prioridad: P0 (urgente) · P1 · P2. Solo el humano mueve tareas a `HECHA` (al h
 | T-002 | P2 | EN_REVISION | Diagnóstico de calidad: análisis estático y tests, registrar fallos como tareas | claude/T-002-diagnostico-calidad | 2026-11-25: informe docs/DIAGNOSTICO_CALIDAD.md con salida real de flutter-ci (0 errores, 1 warning, 79 infos; 35/35 tests). Creadas T-007..T-010 (T-004..T-006 reservadas por PR #9) | https://github.com/healthandfitness2022lv-afk/entrenamiento_app/pull/PRNUM | $150.000 |
 | T-003 | P2 | PENDIENTE | Análisis comercial (sales): cliente objetivo, propuesta de valor, precios y 3 mejoras prioritarias | — | — | — | por estimar |
 | T-007 | P1 | PENDIENTE | Corregir 10 usos de BuildContext tras await (use_build_context_synchronously) | — | Riesgo de excepción al guardar entrenamiento, asignar rutina y en planner. Ver docs/DIAGNOSTICO_CALIDAD.md | — | por estimar |
-| T-008 | P2 | PENDIENTE | Limpieza de lints menores (warning unused_import, avoid_print y 67 infos cosméticos) | — | Sin cambio funcional | — | por estimar |
+| T-008 | P2 | PENDIENTE | Limpieza de lints menores (warning unused_import, avoid_print y 66 infos cosméticos) | — | Sin cambio funcional | — | por estimar |
 | T-009 | P2 | PENDIENTE | Ampliar tests: servicios de fatiga, RM, volumen y guardado de entrenamiento | — | Hoy 5/31 servicios con test | — | por estimar |
 | T-010 | P2 | PENDIENTE | Inventario de dependencias desactualizadas (70 paquetes) y plan de actualización | — | Saltos mayores de Firebase = decisión crítica | — | por estimar |
 ## Detalle de tareas
