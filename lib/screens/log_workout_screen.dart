@@ -1792,15 +1792,12 @@ class _LogWorkoutScreenState extends State<LogWorkoutScreen>
 
   Future<void> _runSaveWorkout(String notes) async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
-    final oldStatsSnap =
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .collection('stats')
-            .doc('global')
-            .get();
-    final Map<String, dynamic> oldStats =
-        oldStatsSnap.exists ? oldStatsSnap.data()! : {};
+    // El servicio se construye antes del primer await para no usar `context`
+    // tras una espera asíncrona. El guardado sigue completándose aunque el
+    // usuario salga de la pantalla: WorkoutSaveService verifica
+    // `context.mounted` antes de mostrar diálogos. `oldStats` solo se lee en
+    // onSuccess, que corre después de asignarse.
+    late final Map<String, dynamic> oldStats;
 
     final service = WorkoutSaveService(
       context: context,
@@ -1840,6 +1837,15 @@ class _LogWorkoutScreenState extends State<LogWorkoutScreen>
         }
       },
     );
+    final oldStatsSnap =
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('stats')
+            .doc('global')
+            .get();
+    oldStats = oldStatsSnap.exists ? oldStatsSnap.data()! : {};
+
     await service.execute();
   }
 
