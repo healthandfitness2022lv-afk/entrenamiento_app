@@ -12,13 +12,14 @@
 - **Venta exclusiva a un cliente:** $1.500.000 – $3.000.000 (app con la marca de un gimnasio)
 - **Valor hoy como producto (sin clientes):** $4.000.000 – $8.000.000
 - **Nota:** Mercado con competidores fuertes; el diferencial es precio local y app con la marca del propio gimnasio.
+- **2026-11-28 (T-007):** corrección de estabilidad (sin funciones nuevas). No cambia precio ni tipo de cliente, pero reduce el riesgo de errores al guardar entrenamientos, requisito para vender a gimnasios.
 - Fuentes: apps.shopify.com/bsale · guiadesoftware.com/blog/mejor-software-gestion-inventario-pymes-latam · capterra.es (GymMaster, Fitco, Boxmagic) · zenoti.com/es/thecheckin/best-fitness-gym-software-2026 · ecosistemastartup.com (easycancha) · 2x3.cl/p/precios-desarrollo-aplicacion-movil
 
 
 ## Resumen
-- **Costo de desarrollo estimado (horas × tarifa): $20.450.000 CLP**
-- Horas acumuladas: 818 h
-- Última actualización: 2026-11-15 (valoración inicial + T-001)
+- **Costo de desarrollo estimado (horas × tarifa): $20.525.000 CLP**
+- Horas acumuladas: 821 h
+- Última actualización: 2026-11-28 (T-007)
 - Referencia de mercado: apps de entrenamiento para atleta/entrenador se venden por suscripción, p. ej. TrainingPeaks (https://www.trainingpeaks.com/pricing) y TrueCoach. Precios no verificados en esta ejecución; revisar las páginas. El valor aquí es costo de reemplazo, no precio de venta.
 
 ## Módulos
@@ -35,6 +36,7 @@
 | Reportes de atleta/periodo, PDF y export de stories | Reportes extensos, PDF, imágenes compartibles | 40 | 1.000.000 | 2026-11-15 | inicial |
 | Scripts de datos y tests | ~56 scripts Node, 5 suites de test | 20 | 500.000 | 2026-11-15 | inicial |
 | T-001 Documentación de arquitectura | ARCHITECTURE.md, comandos, valoración inicial | 8 | 200.000 | 2026-11-15 | #6 |
+| T-007 Estabilidad: BuildContext tras await | Guardas mounted en 10 puntos (guardado de entrenamiento, asignar rutina, planner, carpetas) | 3 | 75.000 | 2026-11-28 | #12 |
 
 ## Notas
 - Horas de módulos iniciales son estimaciones por tamaño de código (~57.800 líneas Dart) y complejidad; no son mediciones.

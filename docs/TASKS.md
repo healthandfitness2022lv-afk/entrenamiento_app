@@ -8,7 +8,7 @@ Prioridad: P0 (urgente) · P1 · P2. Solo el humano mueve tareas a `HECHA` (al h
 | T-001 | P1 | HECHO | Completar ARCHITECTURE.md inspeccionando el código real | claude/T-001-architecture-valoracion | Solo docs; sin tests (flutter no disponible en sesión); QA automático en PR | https://github.com/healthandfitness2022lv-afk/entrenamiento_app/pull/6 | $20.450.000 (incl. inicial) |
 | T-002 | P2 | PENDIENTE | Diagnóstico de calidad: análisis estático y tests, registrar fallos como tareas | — | — | — | por estimar |
 | T-003 | P2 | PENDIENTE | Análisis comercial (sales): cliente objetivo, propuesta de valor, precios y 3 mejoras prioritarias | — | — | — | por estimar |
-| T-007 | P1 | EN_CURSO | Corregir 10 usos de BuildContext tras await (use_build_context_synchronously) | claude/T-007-context-async | 2026-11-28: inicio. Tarea definida en PR #11 (T-002); T-002 y T-003 ya tienen PR abierto (#11, #9) | — | por estimar |
+| T-007 | P1 | EN_REVISION | Corregir 10 usos de BuildContext tras await (use_build_context_synchronously) | claude/T-007-context-async | 2026-11-28: guardas mounted en 6 archivos; el guardado de entrenamiento construye el servicio antes del await (no se aborta). QA estático APROBADO; falta confirmar flutter analyze/test en CI (PR #10) | https://github.com/healthandfitness2022lv-afk/entrenamiento_app/pull/12 | $75.000 |
 ## Detalle de tareas
 
 ### T-001 — Completar ARCHITECTURE.md
