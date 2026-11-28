@@ -127,7 +127,9 @@ class _ExercisesScreenState extends State<ExercisesScreen> {
                           'updatedAt': FieldValue.serverTimestamp(),
                         });
                   }
+                  if (!ctx.mounted) return;
                   Navigator.pop(ctx);
+                  if (!mounted) return;
                   setState(() => _selectedType = name);
                 },
                 child: Text(
@@ -148,6 +150,7 @@ class _ExercisesScreenState extends State<ExercisesScreen> {
           'exerciseType': newType,
           'updatedAt': FieldValue.serverTimestamp(),
         });
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text("Ejercicio movido a $newType"),

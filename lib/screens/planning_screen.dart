@@ -286,6 +286,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
             .get();
 
     final users = snapshot.docs;
+    if (!mounted) return;
 
     await showDialog(
       context: context,
@@ -590,6 +591,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
     }
     final weeklyBefore = await _estimateWeeklyProfile();
     final weeklyMusclesBefore = await _estimateWeeklyMuscles();
+    if (!mounted) return;
     final updatedBlock = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
@@ -2745,7 +2747,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
       helpText: "COPIAR: Selecciona el lunes de la semana origen",
       selectableDayPredicate: (day) => day.weekday == DateTime.monday,
     );
-    if (sourceStart == null) return;
+    if (sourceStart == null || !mounted) return;
     final sourceEnd = sourceStart.add(const Duration(days: 7));
 
     // 2. SELECT TARGET WEEK
@@ -2779,6 +2781,7 @@ class _PlanningScreenState extends State<PlanningScreen> {
     // 4. CONFIRM OVERWRITE IF TARGET IS NOT EMPTY
     final existingSnapshot = await _plannedDocsInRange(targetStart, targetEnd);
 
+    if (!mounted) return;
     bool proceed = true;
     if (existingSnapshot.isNotEmpty) {
       proceed =

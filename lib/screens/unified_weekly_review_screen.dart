@@ -1708,6 +1708,7 @@ class _UnifiedWeeklyReviewScreenState extends State<UnifiedWeeklyReviewScreen>
         beforeScores,
         trainingIdentity?.scores ?? const <TrainingProfile, double>{},
       );
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ponderaciones iniciales actualizadas.')),
       );

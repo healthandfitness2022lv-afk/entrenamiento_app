@@ -26,6 +26,7 @@ class _AssignRoutineScreenState extends State<AssignRoutineScreen> {
       'status': 'active',
     });
 
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Rutina asignada correctamente")),
     );

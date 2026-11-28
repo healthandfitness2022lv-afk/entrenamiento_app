@@ -156,6 +156,7 @@ class _LibrarySidebarState extends State<LibrarySidebar> {
                           'order': DateTime.now().millisecondsSinceEpoch,
                           'createdAt': FieldValue.serverTimestamp(),
                         });
+                    if (!ctx.mounted) return;
                     Navigator.pop(ctx);
                   }
                 },
